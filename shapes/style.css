@@ -1,0 +1,15 @@
+canvas#sotacanvas {
+	width: 256px;
+	height: 205px;
+	background: black;
+}
+
+div#commands {
+	float: right;
+}
+
+#commandstextbox {
+	width: 40em;
+	height: 15em;
+}
+
