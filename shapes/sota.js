@@ -52,10 +52,8 @@ function setup() {
 }
 
 function log(text) {
-	/*
 	logtextbox.value += text + "\n";
 	logtextbox.scrollTop = logtextbox.scrollHeight;
-	*/
 }
 
 function clear(ctx) {
@@ -80,34 +78,39 @@ function draw_cmd_to_plane_idx(cmd) {
 	}
 }
 
+function draw_standard(ctx, data, idx, length) {
+	var x, y;
+
+	ctx.beginPath();
+	y = data[idx++];
+	x = data[idx++];
+
+	ctx.moveTo(x, y);
+
+	for(var i = 1; i < length; i++) {
+		y = data[idx++];
+		x = data[idx++];
+		ctx.lineTo(x, y);
+	}
+
+	//ctx.stroke();
+	ctx.closePath();
+	ctx.fill();
+	return idx;
+}
+
 function draw(bitplane, data, idx, clearPlane) {
 
 	var ctx = bpcontext[bitplane];
+
+	var length = data[idx++];
 
 	if(clearPlane) {
 		clear(ctx);
 	}
 
-	var length = data[idx++];
-
 	if(length > 0) {
-		var x, y;
-
-		ctx.beginPath();
-		y = data[idx++];
-		x = data[idx++];
-
-		ctx.moveTo(x, y);
-
-		for(var i = 1; i < length; i++) {
-			y = data[idx++];
-			x = data[idx++];
-			ctx.lineTo(x, y);
-		}
-
-		//ctx.stroke();
-		ctx.closePath();
-		ctx.fill();
+		idx = draw_standard(ctx, data, idx, length);
 	}
 
 	return idx;
@@ -123,7 +126,7 @@ function draw_multiple(ctx, idx)
 	for(var i = 0; i < num_draws; i++) {
 		var cmd = data[idx++];
 
-		//log("draw cmd " + cmd.toString(16) + " idx " + (idx - 2) + " len " + data[idx]);
+		log("draw cmd " + cmd.toString(16) + " idx " + (idx - 2) + " len " + data[idx]);
 		if(cmd >= 0xd0 && cmd <= 0xdf) {
 			// we know what these are.
 			var bitplane = draw_cmd_to_plane_idx(cmd);
@@ -152,10 +155,14 @@ function draw_multiple(ctx, idx)
 		}
 	}
 
-	clear(ctx);
+	var not_cleared_yet = true;
 
 	for(var i = 0; i < 4; i++) {
 		if(drawn_in_plane[i]) {
+			if(not_cleared_yet) {
+				clear(ctx);
+				not_cleared_yet = false;
+			}
 			ctx.drawImage(bitplanes[i], 0, 0);
 		}
 	}
