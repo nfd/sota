@@ -122,109 +122,60 @@ class ShapeMaker:
 			index = struct.unpack('>I', self.handle.read(4))[0]
 			indices.append(index)
 
+		# find the smallest index and subtract to get 0-based indices.
+		script_offset = min(indices)
+		for i in range(len(indices)):
+			indices[i] -= script_offset
+			assert indices[i] >= 0
+
 		# Read the script. Note that indices may repeat, hence the dict.
 		for index in indices:
-			pos = startpos + index
+			pos = startpos + index + script_offset
 			if index not in script:
-				print(hex(index))
 				self.handle.seek(pos)
-				#
-				# have to pass startpos down because tweens
-				# require it
-				script[index] = self.read_one(startpos)
+				script[index] = self.read_one()
 				if script[index] is None:
 					print("Early exit")
 					break
 
-		return {'indices': indices, 'frames': script}
+		# Combine all the script portions into one byte array.
+		max_length = max(script.keys())
+		max_length += len(script[max_length])
 
-	def read_one(self, startpos):
-		cmd_major = struct.unpack('B', self.handle.read(1))[0]
-		script = [cmd_major]
+		all_scripts = [0] * max_length
 
-		if cmd_major not in (1, 2, 3, 4, 5, 6):
-			print("Unknown major cmd %x" % (cmd_major))
-			return None
-	
+		for index, thescript in script.items():
+			all_scripts[index:index+len(thescript)] = thescript
 
-		cmd_start = self.handle.tell()
+		return {'indices': indices, 'data': all_scripts}
+
+	def next_byte(self):
+		return struct.unpack('B', self.handle.read(1))[0]
+
+	def read_one(self):
+		# Read one combined drawing command.
+		data = []
+
+		cmd_major = self.next_byte()
+		data.append(cmd_major)
+
 		for i in range(cmd_major):
+			cmd_minor = self.next_byte()
+			data.append(cmd_minor)
 
-			cmd_minor = struct.unpack('B', self.handle.read(1))[0]
-			element = None
-
-			# TODO the 0 story is FUBAR
-			if cmd_minor == 0xff:
-				# 0 = unknown. ff = likely end of frames
-				print('End of frames %x' % (cmd_minor))
-				element = (cmd_minor, [])
-			elif cmd_minor in (0, 1, 2, 3, 4, 5, 6):
-				element = (cmd_minor, [])
-			elif cmd_minor == 7:
-				element = (cmd_minor, list(self.handle.read(2))) # unknown
-			elif cmd_minor == 8:
-				element = (cmd_minor, list(self.handle.read(45))) # unknown
-			elif cmd_minor == 0xc:
-				element = (cmd_minor, list(self.handle.read(10))) # unknown
-			elif cmd_minor == 0xe:
-				element = (cmd_minor, list(self.handle.read(9))) # unknown
-			elif cmd_minor == 0xf:
-				element = (cmd_minor, list(self.handle.read(1))) # unknown
-			elif cmd_minor in (0x27, 0x29):
-				element = (cmd_minor, list(self.handle.read(11))) # unknown
-			elif cmd_minor == 0x3f and self.handle.tell() == 0x01231a:
-				element = (cmd_minor, list(self.handle.read(49))) # don't know what this is yet, collecting evidence.
-			elif cmd_minor & 0xd0 == 0xd0:
-				element = self.get_vector(cmd_minor)
-			elif cmd_minor in (0x76, 0x78):
-				element = (cmd_minor, list(self.handle.read(4))) # unknown
-			elif cmd_minor == 0x92:
-				element = (cmd_minor, list(self.handle.read(7))) # unknown
-			elif cmd_minor == 0x96:
-				element = (cmd_minor, list(self.handle.read(14))) # unknown
-			elif cmd_minor == 0xe6:
-				# Tweening -- probably also applies to e7
-				relative_to = cmd_start - startpos 
-				idx_from, idx_to, current_step, total_steps = struct.unpack('>HHBB', self.handle.read(6))
-				# Turns out that these shapes can refer to INSIDE PORTIONS of draw-multiple commands! Aargh...
-				# have to change file format.
-				element = (cmd_minor, (str(relative_to - idx_from), str(relative_to + idx_to), current_step, total_steps))
-			elif cmd_minor in (0xe7, 0xf2):
-				element = (cmd_minor, list(self.handle.read(6))) # unknown
-			elif cmd_minor == 0xe8:
-				element = (cmd_minor, list(self.handle.read(7))) # unknown
+			if cmd_minor & 0xd0 == 0xd0:
+				# Drawing command
+				num_points = self.next_byte()
+				data.append(num_points)
+				data.extend(list(self.handle.read(num_points * 2)))
+			elif cmd_minor in (0xe6, 0xe8):
+				# Tweening
+				data.extend(list(self.handle.read(6)))
 			else:
 				print("Unknown cmd %02x @%06x" % (cmd_minor, self.handle.tell() - 1))
+				raise NotImplementedError()
 
-			if element is not None:
-				script.append(element)
-			else:
-				return None
-
-		return script
-
-	def get_vector(self, cmd_minor):
-		position = self.handle.tell()
-
-		points = None
-
-		output_dict = {"position": '0x%x' % (position), "shape": []}
-
-		num_points = struct.unpack('B', self.handle.read(1))[0]
-		points = self.handle.read(num_points * 2)
-
-		# Load the shape
-		shape = []
-		for i in range(num_points):
-			idx = i * 2
-			# data in (y, x) format
-			shape.append((points[idx + 1], points[idx]) )
-
-		# Write JSON data
-		output_dict['shape'] = shape
-		print("Found vector at position %x" % (position))
-
-		return (cmd_minor, output_dict)
+		return data
 
 path = 'Spaceballs-StateOfTheArt.adf'
 
@@ -238,7 +189,7 @@ def write_animation(image):
 
 		script = shapemaker.getscript()
 		with open(pathname, 'w') as h:
-			json.dump(script, h, sort_keys=True, indent=4)
+			json.dump(script, h, sort_keys=True)
 		
 		print("Wrote", pathname)
 	

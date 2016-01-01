@@ -1,10 +1,17 @@
 var canvas;
 var idxElem;
-var script = null;
+var indices = null;
+var data = null;
 var logtextbox;
+var animating = 0;
+var animation_start_ms;
+var last_animation_frame = -1;
+
+var ms_per_frame = 33;
 
 /* canvas bit-planes */
 var bitplanes = new Array();
+var bpcontext = new Array();
 var colours = new Array("#0f0", "#00f", "#f00", "#ff0");
 
 function setup() {
@@ -12,6 +19,7 @@ function setup() {
 	idxElem = document.getElementById("idx");
 	
 	document.getElementById("step").addEventListener('click', step);
+	document.getElementById("animate").addEventListener('click', start_animating);
 
 	idxElem.addEventListener('keypress', function(e) {
 		if(e.keyCode == 13) {
@@ -26,33 +34,28 @@ function setup() {
 		bitplane.height = canvas.height;
 
 		bitplanes.push(bitplane);
+
+		var ctx = bitplane.getContext("2d");
+
+		ctx.strokeStyle = "#fff";
+		ctx.fillStyle = "#fff";
+
+		ctx.globalCompositeOperation='xor'; // default is source-over
+		bpcontext.push(ctx);
 	}
 
 	logtextbox = document.getElementById("commandstextbox");
 
 	//loadScript("script0012bc.json");
-	loadScript("script0c0374.json");
+	loadScript("script067230.json");
+	//loadScript("script09e1b8.json");
 }
 
-function log(idx, frame) {
-	var text = "idx: " + idx + " cmd: " + frame[0] + "\n";
-
-	for(i = 1; i < frame.length; i++) {
-		var cmd = frame[i][0];
-		var args = frame[i][1];
-		var shortargs;
-
-		if(args.hasOwnProperty("shape")) {
-			shortargs = JSON.stringify({"position": args["position"],
-				"shape": args["shape"].slice(0, 5)}) + "[...] len=" + args["shape"].length;
-		} else {
-			shortargs = JSON.stringify(args);
-		}
-		text += "  sub:" + cmd + " args:" + shortargs + "\n";
-	}
-
-	logtextbox.value += text;
+function log(text) {
+	/*
+	logtextbox.value += text + "\n";
 	logtextbox.scrollTop = logtextbox.scrollHeight;
+	*/
 }
 
 function clear(ctx) {
@@ -77,74 +80,72 @@ function draw_cmd_to_plane_idx(cmd) {
 	}
 }
 
-function draw(bitplane, shape, clearPlane) {
+function draw(bitplane, data, idx, clearPlane) {
 
-	// TODO combine bit-planes. Pretty difficult
-	// to simulate without actually using bit-planes :(
-	var ctx = bitplanes[bitplane].getContext("2d");
-
-	ctx.strokeStyle = colours[bitplane];
-	ctx.fillStyle = colours[bitplane];
-
-	ctx.globalCompositeOperation='xor'; // default is source-over
+	var ctx = bpcontext[bitplane];
 
 	if(clearPlane) {
 		clear(ctx);
 	}
 
-	if(shape.length > 0) {
-		
+	var length = data[idx++];
+
+	if(length > 0) {
+		var x, y;
 
 		ctx.beginPath();
-		ctx.moveTo(shape[0][0], shape[0][1]);
+		y = data[idx++];
+		x = data[idx++];
 
-		for(var i = 1; i < shape.length; i++) {
-			ctx.lineTo(shape[i][0], shape[i][1]);
+		ctx.moveTo(x, y);
+
+		for(var i = 1; i < length; i++) {
+			y = data[idx++];
+			x = data[idx++];
+			ctx.lineTo(x, y);
 		}
 
-		//ctx.lineTo(shape[0][0] * 2, shape[0][1] * 2);
-		//
-		// window.requestAnimationFrame(callback)
-
-		//ctx.lineWidth = 10.0;
-		ctx.fill();
+		//ctx.stroke();
 		ctx.closePath();
+		ctx.fill();
 	}
+
+	return idx;
 }
 
-function draw_multiple(ctx, frame) 
+function draw_multiple(ctx, idx) 
 {
 	// Read the next count cmds, which should be draws
 	var drawn_in_plane = new Array(0, 0, 0, 0);
 
-	var num_parts = frame[0];
+	var num_draws = data[idx++];
 
-	for(var i = 0; i < num_parts; i++) {
-		var part = frame[i + 1];
-		var cmd = part[0];
-		var args = part[1];
+	for(var i = 0; i < num_draws; i++) {
+		var cmd = data[idx++];
 
+		//log("draw cmd " + cmd.toString(16) + " idx " + (idx - 2) + " len " + data[idx]);
 		if(cmd >= 0xd0 && cmd <= 0xdf) {
 			// we know what these are.
 			var bitplane = draw_cmd_to_plane_idx(cmd);
 
-			draw(bitplane, args["shape"], drawn_in_plane[bitplane]==0);
+			idx = draw(bitplane, data, idx, drawn_in_plane[bitplane]==0);
 			drawn_in_plane[bitplane] = 1;
-		} else if (cmd == 0xe6) {
-			// Tweening
-			var tween_shape_from = args[0];
-			var tween_shape_to   = args[1];
-			var tween_t          = args[2]; // position in tween
-			var tween_count      = args[3];
+		} else if (cmd == 0xe6 || cmd == 0xe8) {
+			var bitplane = cmd == 0xe6? 0: 2;
 
-			// Construct a temporary shape by lerping from shape_from to shape_to.
-			var shape = lerp_tween(tween_shape_from, tween_shape_to, tween_t, tween_count, 0);
-			draw(0, shape, drawn_in_plane[0]==0);
-			drawn_in_plane[0] = 1;
-		} else if (cmd == 0xe8) {
-			// We don't know what this is, but they don't
-			// cause problems so don't clutter the log.
-			// Probably tweening in other bitplane.
+			var current_position = idx;
+
+			var tween_from  = current_position - ((data[idx++] << 8) + (data[idx++]));
+			var tween_to    = current_position + ((data[idx++] << 8) + (data[idx++]));
+			var tween_t     = data[idx++]; // position in tween
+			var tween_count = data[idx++];
+
+			var shape = lerp_tween(tween_from, tween_to, tween_t, tween_count);
+			draw(bitplane, shape, 0, drawn_in_plane[bitplane]==0);
+			drawn_in_plane[bitplane] = 1;
+		} else if (cmd == 0xf2) {
+			// ???
+			idx += 6;
 		} else {
 			console.log("unexpected draw cmd " + cmd);
 			console.log(args);
@@ -154,22 +155,36 @@ function draw_multiple(ctx, frame)
 	clear(ctx);
 
 	for(var i = 0; i < 4; i++) {
-		ctx.drawImage(bitplanes[i], 0, 0);
+		if(drawn_in_plane[i]) {
+			ctx.drawImage(bitplanes[i], 0, 0);
+		}
 	}
 }
 
-function lerp_tween(tween_shape_from_idx, tween_shape_to_idx, tween_t, tween_count, bitplane_idx) {
-	// okay this is a little nasty
-	console.log(script["frames"][tween_shape_from_idx]);
-	var tween_shape_from = script["frames"][tween_shape_from_idx][bitplane_idx + 1][1]["shape"];
-	var tween_shape_to   = script["frames"][tween_shape_to_idx][bitplane_idx + 1][1]["shape"];
+function lerp_tween(tween_from_idx, tween_to_idx, tween_t, tween_count) {
+	// We expect these to be draw commands (i.e. 0xd2) followed by lengths.
+	if(data[tween_from_idx] & 0xd0 != 0xd0) {
+		console.log("Unexpected tween idx (from)");
+	}
+
+	if(data[tween_to_idx] & 0xd0 != 0xd0) {
+		console.log("Unexpected tween idx (to)");
+	}
+
+	var tween_from_length = data[tween_from_idx + 1];
+	var tween_to_length   = data[tween_to_idx + 1];
+
+	var tween_from_data = tween_from_idx + 2;
+	var tween_to_data   = tween_to_idx + 2;
+
+	// new_shape will just be a length followed by a set of (y, x) points.
 	var new_shape = new Array();
 
-	// Point selection is wrong -- we should tween the points as well; if we go 10 to 20 we should
-	// pick (0, 0), (0, 1), (1, 2), (2, 2) etc
-	var points = Math.max(tween_shape_from.length, tween_shape_to.length);
-	var point_multiplier_from = tween_shape_from.length / points;
-	var point_multiplier_to   = tween_shape_to.length / points;
+	var points = Math.max(tween_from_length, tween_to_length);
+	new_shape.push(points);
+
+	var point_multiplier_from = tween_from_length / points;
+	var point_multiplier_to   = tween_to_length / points;
 
 	var amt = tween_t / tween_count;
 
@@ -177,9 +192,14 @@ function lerp_tween(tween_shape_from_idx, tween_shape_to_idx, tween_t, tween_cou
 		var point_from = Math.floor(i * point_multiplier_from);
 		var point_to   = Math.floor(i * point_multiplier_to);
 
-		var x = Math.floor(tween_shape_from[point_from][0] + (amt * (tween_shape_to[point_to][0] - tween_shape_from[point_from][0])));
-		var y = Math.floor(tween_shape_from[point_from][1] + (amt * (tween_shape_to[point_to][1] - tween_shape_from[point_from][1])));
-		new_shape.push([x, y]);
+		var idx_from   = tween_from_data + (point_from * 2);
+		var idx_to     = tween_to_data + (point_to * 2);
+
+		var y = Math.floor(data[idx_from] + (amt * (data[idx_to] - data[idx_from])));
+		new_shape.push(y);
+
+		var x = Math.floor(data[idx_from + 1] + (amt * (data[idx_to + 1] - data[idx_from + 1])));
+		new_shape.push(x);
 	}
 
 	return new_shape;
@@ -187,19 +207,45 @@ function lerp_tween(tween_shape_from_idx, tween_shape_to_idx, tween_t, tween_cou
 }
 
 function step() {
-	var idx = idxElem.value;
+	var idx;
+	var shouldDraw = true;
 
-	if(idx < script["indices"].length) {
-		var frame = script["frames"][script["indices"][idx]];
-
-		log(idx, frame);
-
-		var ctx = canvas.getContext("2d");
-		draw_multiple(ctx, frame);
-
-		idx ++;
+	if(animating) {
+		idx = Math.floor((Date.now() - animation_start_ms) / ms_per_frame);
+		shouldDraw = idx != last_animation_frame;
+	} else {
+		idx = idxElem.value;
 	}
+
+	if(idx < indices.length) {
+		//log(idx, frame);
+
+		if(shouldDraw) {
+			var ctx = canvas.getContext("2d");
+			draw_multiple(ctx, indices[idx]);
+		}
+
+		if(animating) {
+			last_animation_frame = idx;
+			window.requestAnimationFrame(step);
+		} else {
+			idx ++;
+		}
+
+	} else {
+		animating = false;
+	}
+
 	idxElem.value = idx;
+}
+
+function start_animating() {
+	idxElem.value = "0";
+
+	animating = true;
+	last_animation_frame = -1;
+	animation_start_ms = Date.now();
+	step();
 }
 
 function loadScript(filename) {
@@ -207,7 +253,9 @@ function loadScript(filename) {
 
 	req.onreadystatechange = function() {
 		if(req.readyState == 4 && req.status == 200) {
-			script = JSON.parse(req.responseText);
+			var script = JSON.parse(req.responseText);
+			indices = script["indices"];
+			data = script["data"];
 			step();
 		}
 	}
