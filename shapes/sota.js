@@ -13,7 +13,7 @@ var ms_per_frame = 66;
 var bitplanes = new Array();
 var bpcontext = new Array();
 // TODO make this a TypedArray as well
-var palette = new Array(0xf000, 0xffff, 0xff00, 0xfff0);
+var palette = new Array(0xff000000, 0xffffffff, 0xffff0000, 0xffffff00);
 
 function setup() {
 	canvas = document.getElementById("sotacanvas");
@@ -218,6 +218,11 @@ function draw(bitplane_idx, data, idx, clearPlane) {
 }
 function combine_bitplanes(ctx)
 {
+	var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+	var buf = new ArrayBuffer(imageData.data.length);
+	var buf8 = new Uint8ClampedArray(buf);
+	var data = new Uint32Array(buf);
+	
 	for(var y = 0; y < canvas.height; y++) {
 		for(var x = 0; x < canvas.width; x++) {
 			var idx = (y * canvas.width) + x;
@@ -227,10 +232,12 @@ function combine_bitplanes(ctx)
 				| bpcontext[2][idx]
 				| bpcontext[3][idx];
 
-			ctx.fillStyle=palette[colour];
-			ctx.fillRect(x, y, 1, 1);
+			data[idx] = palette[colour];
 		}
 	}
+
+	imageData.data.set(buf8);
+	ctx.putImageData(imageData, 0, 0);
 }
 
 function draw_multiple(ctx, idx) 
