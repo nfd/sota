@@ -7,7 +7,7 @@ var animating = 0;
 var animation_start_ms;
 var last_animation_frame = -1;
 
-var ms_per_frame = 33;
+var ms_per_frame = 66;
 
 /* canvas bit-planes */
 var bitplanes = new Array();
@@ -28,6 +28,8 @@ function setup() {
 		}
 	});
 
+	idxElem.value = "0";
+
 	for(i = 0; i < 4; i++) {
 		var bitplane = document.createElement("canvas");
 		bitplane.width = canvas.width;
@@ -39,6 +41,7 @@ function setup() {
 
 		ctx.strokeStyle = "#fff";
 		ctx.fillStyle = "#fff";
+		ctx.imageSmoothingEnabled = false;
 
 		ctx.globalCompositeOperation='xor'; // default is source-over
 		bpcontext.push(ctx);
@@ -99,6 +102,119 @@ function draw_standard(ctx, data, idx, length) {
 	return idx;
 }
 
+function draw_polyfill(ctx, data, base_idx, length) {
+	/* Polygon fill algorithm */
+	// The following tutorial was most helpful:
+	// https://www.cs.uic.edu/~jbell/CourseNotes/ComputerGraphics/PolygonFilling.html
+	// This tutorial cleared up some corner cases:
+	// http://web.cs.ucdavis.edu/~ma/ECS175_S00/Notes/0411_b.pdf
+
+	// Line info entry is [xmin, ymax, 1/m, previous-idx, ymin]
+	// line info is indexed from the edge table: edge table for a given y co-ordinate (ymin)
+	// is an index into the line_info table.
+	
+	var line_info = new Array();
+	var edge_table = new Array(256);
+	var i;
+	var global_ymin = 256;
+	var global_ymax = 0;
+
+	/* Fill edge_table and line_info*/
+	for(i=0; i < length * 2; i+= 2) {
+		var y0, x0, y1, x1;
+
+		y0 = data[base_idx + i];
+		x0 = data[base_idx + i + 1];
+
+		if(i == (length * 2) - 2) {
+			// close the shape
+			y1 = data[base_idx];
+			x1 = data[base_idx + 1];
+		} else {
+			y1 = data[base_idx + i + 2];
+			x1 = data[base_idx + i + 3];
+		}
+
+		if(y0 == y1) {
+			// Horizontal edge; just ignore it.
+			continue;
+		}
+
+		// ensure y0 <= y1
+		if(y0 > y1) {
+			var tmp;
+			tmp = y0; y0 = y1; y1 = tmp;
+			tmp = x0; x0 = x1; x1 = tmp;
+		}
+
+		if(y0 < global_ymin)
+			global_ymin = y0; // highest point of the polygon.
+
+		if(y1 > global_ymax) 
+			global_ymax = y1;
+
+		line_info.push([x0, y1, (x1 - x0) / (y1 - y0), edge_table[y0], y0]);
+		edge_table[y0] = line_info.length - 1;
+	}
+
+	// Active edge table: subset of the edge table which is currently being drawn.
+	var active_lines = new Array();
+
+	// Scaline algorithm.
+	for(var y = global_ymin; y <= global_ymax; y++) {
+		// Remove active edges where ymax == y
+		i = 0;
+		while(i < active_lines.length) {
+			if(active_lines[i][1] == y) {
+				active_lines.splice(i, 1);
+			} else {
+				i++;
+			}
+		}
+		
+		// Move all edges with ymin == y into the active line table.
+		var line_info_idx = edge_table[y];
+		while(line_info_idx != undefined) {
+			active_lines.push(line_info[line_info_idx]);
+			line_info_idx = line_info[line_info_idx][3];
+		}
+
+		// Sort the active edge table on xmin 
+		active_lines.sort(function(lhs, rhs) {
+			// wtf that JS requires this, but it does
+			if(lhs[0] < rhs[0]) return -1;
+			if(lhs[0] > rhs[0]) return 1;
+			return 0;
+		});
+
+		// Draw the lines.
+		var is_drawing = 0;
+		var prev_x = -1;
+		for(i = 0; i < active_lines.length; i++) {
+			var next_x = is_drawing ? Math.floor(active_lines[i][0]) : Math.ceil(active_lines[i][0]);
+
+			if(is_drawing) {
+				ctx.fillRect(prev_x, y, next_x - prev_x + 1, 1);
+			}
+
+			if((prev_x != next_x)
+					|| ((active_lines[i - 1][3] != y) || (active_lines[i][3] != y)) ) {
+				// Rule is from p5 of http://web.cs.ucdavis.edu/~ma/ECS175_S00/Notes/0411_b.pdf:
+				// if two edges are the same, count only if the edge is the ymin.
+				is_drawing = 1 - is_drawing;
+			} 
+
+			prev_x = next_x;
+		}
+
+		// Update the gradients in AET.
+		for(i = 0; i < active_lines.length; i++) {
+			active_lines[i][0] += active_lines[i][2];
+		}
+	}
+
+}
+
 function draw(bitplane, data, idx, clearPlane) {
 
 	var ctx = bpcontext[bitplane];
@@ -110,7 +226,17 @@ function draw(bitplane, data, idx, clearPlane) {
 	}
 
 	if(length > 0) {
-		idx = draw_standard(ctx, data, idx, length);
+		/*
+		ctx.strokeStyle = "#0f0";
+		ctx.fillStyle = "#0f0";
+		draw_standard(ctx, data, idx, length);
+		*/
+
+		ctx.strokeStyle = "#fff";
+		ctx.fillStyle = "#fff";
+		draw_polyfill(ctx, data, idx, length);
+
+		idx += (length * 2);
 	}
 
 	return idx;
@@ -126,7 +252,7 @@ function draw_multiple(ctx, idx)
 	for(var i = 0; i < num_draws; i++) {
 		var cmd = data[idx++];
 
-		log("draw cmd " + cmd.toString(16) + " idx " + (idx - 2) + " len " + data[idx]);
+		//log("draw cmd " + cmd.toString(16) + " idx " + (idx - 2) + " len " + data[idx]);
 		if(cmd >= 0xd0 && cmd <= 0xdf) {
 			// we know what these are.
 			var bitplane = draw_cmd_to_plane_idx(cmd);
