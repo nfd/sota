@@ -12,7 +12,8 @@ var ms_per_frame = 66;
 /* canvas bit-planes */
 var bitplanes = new Array();
 var bpcontext = new Array();
-var colours = new Array("#0f0", "#00f", "#f00", "#ff0");
+// TODO make this a TypedArray as well
+var palette = new Array(0xf000, 0xffff, 0xff00, 0xfff0);
 
 function setup() {
 	canvas = document.getElementById("sotacanvas");
@@ -31,19 +32,10 @@ function setup() {
 	idxElem.value = "0";
 
 	for(i = 0; i < 4; i++) {
-		var bitplane = document.createElement("canvas");
-		bitplane.width = canvas.width;
-		bitplane.height = canvas.height;
-
+		var bitplane = new ArrayBuffer(canvas.width * canvas.height);
 		bitplanes.push(bitplane);
 
-		var ctx = bitplane.getContext("2d");
-
-		ctx.strokeStyle = "#fff";
-		ctx.fillStyle = "#fff";
-		ctx.imageSmoothingEnabled = false;
-
-		ctx.globalCompositeOperation='xor'; // default is source-over
+		var ctx = new Uint8Array(bitplane);
 		bpcontext.push(ctx);
 	}
 
@@ -59,8 +51,11 @@ function log(text) {
 	logtextbox.scrollTop = logtextbox.scrollHeight;
 }
 
-function clear(ctx) {
-	ctx.clearRect(0, 0, canvas.width, canvas.height);
+function clear_bitplane(idx) {
+	var longView = new Uint32Array(bitplanes[idx]);
+	for(var i = 0; i < (canvas.width * canvas.height / 4); i ++) {
+		longView[i] = 0;
+	}
 }
 
 function draw_cmd_to_plane_idx(cmd) {
@@ -81,28 +76,7 @@ function draw_cmd_to_plane_idx(cmd) {
 	}
 }
 
-function draw_standard(ctx, data, idx, length) {
-	var x, y;
-
-	ctx.beginPath();
-	y = data[idx++];
-	x = data[idx++];
-
-	ctx.moveTo(x, y);
-
-	for(var i = 1; i < length; i++) {
-		y = data[idx++];
-		x = data[idx++];
-		ctx.lineTo(x, y);
-	}
-
-	//ctx.stroke();
-	ctx.closePath();
-	ctx.fill();
-	return idx;
-}
-
-function draw_polyfill(ctx, data, base_idx, length) {
+function draw_polyfill(bitplane, data, base_idx, length) {
 	/* Polygon fill algorithm */
 	// The following tutorial was most helpful:
 	// https://www.cs.uic.edu/~jbell/CourseNotes/ComputerGraphics/PolygonFilling.html
@@ -194,7 +168,11 @@ function draw_polyfill(ctx, data, base_idx, length) {
 			var next_x = is_drawing ? Math.floor(active_lines[i][0]) : Math.ceil(active_lines[i][0]);
 
 			if(is_drawing) {
-				ctx.fillRect(prev_x, y, next_x - prev_x + 1, 1);
+				var startXIdx = (canvas.width * y) + prev_x;
+				var endXIdx = (canvas.width * y) + next_x;
+				for(var x = startXIdx; x < endXIdx; x++) {
+					bitplane[x] ^= 1;
+				}
 			}
 
 			if((prev_x != next_x)
@@ -212,17 +190,16 @@ function draw_polyfill(ctx, data, base_idx, length) {
 			active_lines[i][0] += active_lines[i][2];
 		}
 	}
-
 }
 
-function draw(bitplane, data, idx, clearPlane) {
+function draw(bitplane_idx, data, idx, clearPlane) {
 
-	var ctx = bpcontext[bitplane];
+	var bitplane = bpcontext[bitplane_idx];
 
 	var length = data[idx++];
 
 	if(clearPlane) {
-		clear(ctx);
+		clear_bitplane(bitplane_idx);
 	}
 
 	if(length > 0) {
@@ -232,14 +209,28 @@ function draw(bitplane, data, idx, clearPlane) {
 		draw_standard(ctx, data, idx, length);
 		*/
 
-		ctx.strokeStyle = "#fff";
-		ctx.fillStyle = "#fff";
-		draw_polyfill(ctx, data, idx, length);
+		draw_polyfill(bitplane, data, idx, length);
 
 		idx += (length * 2);
 	}
 
 	return idx;
+}
+function combine_bitplanes(ctx)
+{
+	for(var y = 0; y < canvas.height; y++) {
+		for(var x = 0; x < canvas.width; x++) {
+			var idx = (y * canvas.width) + x;
+
+			var colour = bpcontext[0][idx] 
+				| bpcontext[1][idx]
+				| bpcontext[2][idx]
+				| bpcontext[3][idx];
+
+			ctx.fillStyle=palette[colour];
+			ctx.fillRect(x, y, 1, 1);
+		}
+	}
 }
 
 function draw_multiple(ctx, idx) 
@@ -255,12 +246,12 @@ function draw_multiple(ctx, idx)
 		//log("draw cmd " + cmd.toString(16) + " idx " + (idx - 2) + " len " + data[idx]);
 		if(cmd >= 0xd0 && cmd <= 0xdf) {
 			// we know what these are.
-			var bitplane = draw_cmd_to_plane_idx(cmd);
+			var bitplane_idx = draw_cmd_to_plane_idx(cmd);
 
-			idx = draw(bitplane, data, idx, drawn_in_plane[bitplane]==0);
-			drawn_in_plane[bitplane] = 1;
+			idx = draw(bitplane_idx, data, idx, drawn_in_plane[bitplane_idx]==0);
+			drawn_in_plane[bitplane_idx] = 1;
 		} else if (cmd == 0xe6 || cmd == 0xe8) {
-			var bitplane = cmd == 0xe6? 0: 2;
+			var bitplane_idx = cmd == 0xe6? 0: 2;
 
 			var current_position = idx;
 
@@ -270,8 +261,8 @@ function draw_multiple(ctx, idx)
 			var tween_count = data[idx++];
 
 			var shape = lerp_tween(tween_from, tween_to, tween_t, tween_count);
-			draw(bitplane, shape, 0, drawn_in_plane[bitplane]==0);
-			drawn_in_plane[bitplane] = 1;
+			draw(bitplane_idx, shape, 0, drawn_in_plane[bitplane_idx]==0);
+			drawn_in_plane[bitplane_idx] = 1;
 		} else if (cmd == 0xf2) {
 			// ???
 			idx += 6;
@@ -283,15 +274,8 @@ function draw_multiple(ctx, idx)
 
 	var not_cleared_yet = true;
 
-	for(var i = 0; i < 4; i++) {
-		if(drawn_in_plane[i]) {
-			if(not_cleared_yet) {
-				clear(ctx);
-				not_cleared_yet = false;
-			}
-			ctx.drawImage(bitplanes[i], 0, 0);
-		}
-	}
+	ctx.clearRect(0, 0, canvas.width, canvas.height);
+	combine_bitplanes(ctx);
 }
 
 function lerp_tween(tween_from_idx, tween_to_idx, tween_t, tween_count) {
