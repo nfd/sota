@@ -7,13 +7,20 @@ var animating = 0;
 var animation_start_ms;
 var last_animation_frame = -1;
 
-var ms_per_frame = 66;
+var ms_per_frame = 50;
 
 /* canvas bit-planes */
 var bitplanes = new Array();
-var bpcontext = new Array();
+var bpdata = new Array();
+var viewport_stride;
+var bpstride = new Array(); // some bitplanes (the backgrounds) are larger than the viewport.
+var bpwidth = new Array();
+var bpheight = new Array();
+var bpoffset = new Array(); // start index for bitplane (to allow for scrolling)
 // TODO make this a TypedArray as well
-var palette = new Array(0xff000000, 0xffffffff, 0xffff0000, 0xffffff00);
+//var palette = new Array(0xff000000, 0xff000000, 0xff117700, 0xffdd0000, 0xff770077, 0xffdd7700, 0xff771111, 0xffbbbb00);
+var palette = new Array(0xff000000, 0xff000000, 0xff007711, 0xff0000dd, 0xff770077, 0xff0077dd, 0xff111177, 0xff00bbbb,
+		0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000);
 
 function setup() {
 	canvas = document.getElementById("sotacanvas");
@@ -31,24 +38,112 @@ function setup() {
 
 	idxElem.value = "0";
 
+	viewport_stride = canvas.width;
+
+	var bitplane_width = canvas.width;
+	var bitplane_height = canvas.height;
+
 	for(i = 0; i < 4; i++) {
-		var bitplane = new ArrayBuffer(canvas.width * canvas.height);
+		if(i == 1) {
+			// Double the size of the bitplanes so we can use them for moving backgrounds.
+			bitplane_width *= 2;
+			bitplane_height *= 2;
+		}
+
+		var bitplane = new ArrayBuffer(bitplane_width * bitplane_height);
 		bitplanes.push(bitplane);
 
 		var ctx = new Uint8Array(bitplane);
-		bpcontext.push(ctx);
+		bpdata.push(ctx);
+
+		bpstride.push(bitplane_width);
+		bpwidth.push(bitplane_width);
+		bpheight.push(bitplane_height);
+		bpoffset.push(0);
 	}
 
 	logtextbox = document.getElementById("commandstextbox");
 
 	//loadScript("script0012bc.json");
-	loadScript("script067230.json");
+	//loadScript("script067230.json");
+	loadScript("script067080.json");
 	//loadScript("script09e1b8.json");
 }
 
 function log(text) {
 	logtextbox.value += text + "\n";
 	logtextbox.scrollTop = logtextbox.scrollHeight;
+}
+
+function draw_thick_circle(xc, yc, radius, thickness, bitplane_idx) {
+	var width = bpwidth[bitplane_idx];
+	var height = bpheight[bitplane_idx];
+	var stride = bpstride[bitplane_idx];
+	var pixels = bpdata[bitplane_idx];
+	var pen = 1 << bitplane_idx;
+
+	if(radius <= 0)
+		return;
+
+	function putpixel(px, py) {
+		if(px >= 0 && px < width && py >= 0 && py <= height)
+			pixels[py * stride + px] = pen;
+	}
+
+	var xouter = radius + thickness;
+    var xinner = radius;
+    var y = 0;
+    var errouter = 1 - xouter;
+    var errinner = 1 - xinner;
+
+	function horiz_line(y, x1, x2) {
+		// TODO: slow
+		while (x1 <= x2) putpixel(x1++, y);
+	}
+
+	function vert_line(x, y1, y2) {
+		// TODO: slow
+		while (y1 <= y2) putpixel(x, y1++);
+	}
+
+
+	while(xouter >= y) {
+		horiz_line(yc + y, xc + xinner, xc + xouter);
+		vert_line(xc + y,  yc + xinner, yc + xouter);
+		horiz_line(yc + y, xc - xouter, xc - xinner);
+		vert_line(xc - y,  yc + xinner, yc + xouter);
+		horiz_line(yc - y, xc - xouter, xc - xinner);
+		vert_line(xc - y,  yc - xouter, yc - xinner);
+		horiz_line(yc - y, xc + xinner, xc + xouter);
+		vert_line(xc + y,  yc - xouter, yc - xinner);
+
+		y++;
+
+		if (errouter < 0) {
+			errouter += 2 * y + 1;
+		} else {
+			xouter --;
+			errouter += 2 * (y - xouter + 1);
+		}
+
+		if (y > radius) {
+			xinner = y;
+		} else {
+			if (errinner < 0) {
+				errinner += 2 * y + 1;
+			} else {
+				xinner --;
+				errinner += 2 * (y - xinner + 1);
+			}
+		}
+	}
+}
+
+function background_init_concentric_circles() {
+	for(var radius = 10; radius < 700; radius+= 12) {
+		draw_thick_circle(Math.floor(bpwidth[1] / 2), Math.floor(bpheight[1] / 2), radius, 6, 1);
+		draw_thick_circle(Math.floor(bpwidth[2] / 2), Math.floor(bpheight[2] / 2), radius, 6, 2);
+	}
 }
 
 function clear_bitplane(idx) {
@@ -64,19 +159,13 @@ function draw_cmd_to_plane_idx(cmd) {
 		case 0xd2:
 			return 0;
 			break;
-		case 0xd3:
-			return 1;
-			break;
 		case 0xd4:
-			return 2;
-			break;
-		case 0xd5:
-			return 3;
+			return 1;
 			break;
 	}
 }
 
-function draw_polyfill(bitplane, data, base_idx, length) {
+function draw_polyfill(bitplane_idx, data, base_idx, length) {
 	/* Polygon fill algorithm */
 	// The following tutorial was most helpful:
 	// https://www.cs.uic.edu/~jbell/CourseNotes/ComputerGraphics/PolygonFilling.html
@@ -92,6 +181,8 @@ function draw_polyfill(bitplane, data, base_idx, length) {
 	var i;
 	var global_ymin = 256;
 	var global_ymax = 0;
+	var bitplane = bpdata[bitplane_idx];
+	var fill_value = 1 << bitplane_idx;
 
 	/* Fill edge_table and line_info*/
 	for(i=0; i < length * 2; i+= 2) {
@@ -171,7 +262,7 @@ function draw_polyfill(bitplane, data, base_idx, length) {
 				var startXIdx = (canvas.width * y) + prev_x;
 				var endXIdx = (canvas.width * y) + next_x;
 				for(var x = startXIdx; x < endXIdx; x++) {
-					bitplane[x] ^= 1;
+					bitplane[x] ^= fill_value;
 				}
 			}
 
@@ -194,8 +285,6 @@ function draw_polyfill(bitplane, data, base_idx, length) {
 
 function draw(bitplane_idx, data, idx, clearPlane) {
 
-	var bitplane = bpcontext[bitplane_idx];
-
 	var length = data[idx++];
 
 	if(clearPlane) {
@@ -209,7 +298,7 @@ function draw(bitplane_idx, data, idx, clearPlane) {
 		draw_standard(ctx, data, idx, length);
 		*/
 
-		draw_polyfill(bitplane, data, idx, length);
+		draw_polyfill(bitplane_idx, data, idx, length);
 
 		idx += (length * 2);
 	}
@@ -218,22 +307,30 @@ function draw(bitplane_idx, data, idx, clearPlane) {
 }
 function combine_bitplanes(ctx)
 {
+	// straight out of https://hacks.mozilla.org/2011/12/faster-canvas-pixel-manipulation-with-typed-arrays/
 	var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 	var buf = new ArrayBuffer(imageData.data.length);
 	var buf8 = new Uint8ClampedArray(buf);
 	var data = new Uint32Array(buf);
+
+	var idx = 0;
+	var bpidx = [bpoffset[0], bpoffset[1], bpoffset[2], bpoffset[3]];
 	
 	for(var y = 0; y < canvas.height; y++) {
 		for(var x = 0; x < canvas.width; x++) {
-			var idx = (y * canvas.width) + x;
+			var colour = bpdata[0][bpidx[0] + x] 
+				| bpdata[1][bpidx[1] + x]
+				| bpdata[2][bpidx[2] + x]
+				| bpdata[3][bpidx[3] + x];
 
-			var colour = bpcontext[0][idx] 
-				| bpcontext[1][idx]
-				| bpcontext[2][idx]
-				| bpcontext[3][idx];
-
-			data[idx] = palette[colour];
+			data[idx + x] = palette[colour];
 		}
+
+		bpidx[0] += bpstride[0];
+		bpidx[1] += bpstride[1];
+		bpidx[2] += bpstride[2];
+		bpidx[3] += bpstride[3];
+		idx += viewport_stride;
 	}
 
 	imageData.data.set(buf8);
@@ -257,8 +354,8 @@ function draw_multiple(ctx, idx)
 
 			idx = draw(bitplane_idx, data, idx, drawn_in_plane[bitplane_idx]==0);
 			drawn_in_plane[bitplane_idx] = 1;
-		} else if (cmd == 0xe6 || cmd == 0xe8) {
-			var bitplane_idx = cmd == 0xe6? 0: 2;
+		} else if (cmd == 0xe6 || cmd == 0xe7 || cmd == 0xe8) {
+			var bitplane_idx = 0; //cmd == 0xe6? 0: 2;
 
 			var current_position = idx;
 
@@ -279,9 +376,7 @@ function draw_multiple(ctx, idx)
 		}
 	}
 
-	var not_cleared_yet = true;
-
-	ctx.clearRect(0, 0, canvas.width, canvas.height);
+	//ctx.clearRect(0, 0, canvas.width, canvas.height);
 	combine_bitplanes(ctx);
 }
 
@@ -341,6 +436,13 @@ function step() {
 		idx = idxElem.value;
 	}
 
+	bpoffset[2] = bpstride[2] * Math.floor((100 + 90 * Math.sin(5.0 + idx / 25))) + 50;
+
+	// TODO
+	bpoffset[1] = Math.floor((100 + 90 * Math.sin(1.0 + idx / 20))) + (50 * bpstride[1])
+		+ bpstride[1] * (Math.floor((60 + 90 * Math.sin(4.0 + idx / 25))));
+
+
 	if(idx < indices.length) {
 		//log(idx, frame);
 
@@ -380,6 +482,8 @@ function loadScript(filename) {
 			var script = JSON.parse(req.responseText);
 			indices = script["indices"];
 			data = script["data"];
+
+			background_init_concentric_circles();
 			step();
 		}
 	}
