@@ -3,7 +3,8 @@ import sys
 import os
 import struct
 
-OUTPUT_DIR='shapes'
+OUTPUT_DIR_JSON='shapes'
+OUTPUT_DIR_BINARY='native/data'
 
 """
 Data format. View it as a finite-state machine, I guess.
@@ -20,6 +21,9 @@ animations = (
 
 	# Main intro (Bond girls)
 	0x10800,
+
+	# Morph into first dancer
+	0x67080,
 
 	# First dancer (38s - 47s)
 	0x67230,
@@ -168,7 +172,7 @@ class ShapeMaker:
 				num_points = self.next_byte()
 				data.append(num_points)
 				data.extend(list(self.handle.read(num_points * 2)))
-			elif cmd_minor in (0xe6, 0xe8):
+			elif cmd_minor in (0xe6, 0xe7, 0xe8):
 				# Tweening
 				data.extend(list(self.handle.read(6)))
 			else:
@@ -179,21 +183,32 @@ class ShapeMaker:
 
 path = 'Spaceballs-StateOfTheArt.adf'
 
+def write_binary(script, path_prefix):
+	with open(path_prefix + '_index.bin', 'wb') as h:
+		for index in script['indices']:
+			h.write(struct.pack('>H', index))
+
+	with open(path_prefix + '_anim.bin', 'wb') as h:
+		h.write(bytes(script['data']))
+
 def write_animation(image):
-	filename = 'script%06x.json' % (image)
-	pathname = os.path.join(OUTPUT_DIR, filename)
+	filename_json = 'script%06x.json' % (image)
+	pathname_json = os.path.join(OUTPUT_DIR_JSON, filename_json)
+	pathname_bin  = os.path.join(OUTPUT_DIR_BINARY, '%06x' % (image))
 
 	with open(path, 'rb') as h:
 		h.seek(image)
 		shapemaker = ShapeMaker(h)
 
 		script = shapemaker.getscript()
-		with open(pathname, 'w') as h:
+		with open(pathname_json, 'w') as h:
 			json.dump(script, h, sort_keys=True)
+
+		write_binary(script, pathname_bin)
 		
-		print("Wrote", pathname)
+		print("Wrote", pathname_json)
 	
-	return filename
+	return filename_json
 
 def write_all_animations():
 	filenames = []
@@ -201,7 +216,7 @@ def write_all_animations():
 		filenames.append(write_animation(image))
 		# break # just the first for now
 
-	with open(os.path.join(OUTPUT_DIR, 'scripts.json'), 'w') as h:
+	with open(os.path.join(OUTPUT_DIR_JSON, 'scripts.json'), 'w') as h:
 		json.dump(filenames, h)
 
 write_all_animations()
