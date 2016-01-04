@@ -17,10 +17,16 @@ var bpstride = new Array(); // some bitplanes (the backgrounds) are larger than 
 var bpwidth = new Array();
 var bpheight = new Array();
 var bpoffset = new Array(); // start index for bitplane (to allow for scrolling)
-// TODO make this a TypedArray as well
-//var palette = new Array(0xff000000, 0xff000000, 0xff117700, 0xffdd0000, 0xff770077, 0xffdd7700, 0xff771111, 0xffbbbb00);
+
 var palette = new Array(0xff000000, 0xff000000, 0xff007711, 0xff0000dd, 0xff770077, 0xff0077dd, 0xff111177, 0xff00bbbb,
 		0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000);
+
+// debug palette
+/*
+var palette = new Array(0xff000000, 0xffffffff, 0xff007711, 0xff0000dd, 0xff770077, 0xff0077dd, 0xff111177, 0xff00bbbb,
+		0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000);
+		*/
+
 
 function setup() {
 	canvas = document.getElementById("sotacanvas");
@@ -36,6 +42,7 @@ function setup() {
 		}
 	});
 
+	// problematic points: 209, 195, 19, 8, 101
 	idxElem.value = "0";
 
 	viewport_stride = canvas.width;
@@ -65,8 +72,8 @@ function setup() {
 	logtextbox = document.getElementById("commandstextbox");
 
 	//loadScript("script0012bc.json");
-	//loadScript("script067230.json");
-	loadScript("script067080.json");
+	//loadScript("script067080.json");
+	loadScript("script067230.json");
 	//loadScript("script09e1b8.json");
 }
 
@@ -205,6 +212,8 @@ function draw_polyfill(bitplane_idx, data, base_idx, length) {
 			continue;
 		}
 
+		var counts_towards_parity = y0 > y1;
+
 		// ensure y0 <= y1
 		if(y0 > y1) {
 			var tmp;
@@ -218,9 +227,20 @@ function draw_polyfill(bitplane_idx, data, base_idx, length) {
 		if(y1 > global_ymax) 
 			global_ymax = y1;
 
-		line_info.push([x0, y1, (x1 - x0) / (y1 - y0), edge_table[y0], y0]);
+		line_info.push([x0, y1, (x1 - x0) / (y1 - y0), edge_table[y0], counts_towards_parity]);
 		edge_table[y0] = line_info.length - 1;
 	}
+
+	/*
+	for(i = global_ymin; i < global_ymax; i++) {
+		var idx = edge_table[i];
+
+		while(line_info[idx] != undefined) {
+			log(i + " " + line_info[idx]);
+			idx = line_info[idx][3];
+		}
+	}
+	*/
 
 	// Active edge table: subset of the edge table which is currently being drawn.
 	var active_lines = new Array();
@@ -258,6 +278,15 @@ function draw_polyfill(bitplane_idx, data, base_idx, length) {
 		for(i = 0; i < active_lines.length; i++) {
 			var next_x = is_drawing ? Math.floor(active_lines[i][0]) : Math.ceil(active_lines[i][0]);
 
+			/*
+			if(y == 132) {
+				fill_value = 3;
+				log("active " + i + " " + next_x + " " + active_lines[i]);
+			} else {
+				fill_value = 1<<bitplane_idx;
+			}
+			*/
+
 			if(is_drawing) {
 				var startXIdx = (canvas.width * y) + prev_x;
 				var endXIdx = (canvas.width * y) + next_x;
@@ -266,12 +295,22 @@ function draw_polyfill(bitplane_idx, data, base_idx, length) {
 				}
 			}
 
-			if((prev_x != next_x)
-					|| ((active_lines[i - 1][3] != y) || (active_lines[i][3] != y)) ) {
+			/* So sometimes we have this:
+			 *       |  |ab|  |
+			 *       |  |ab|  |
+			 *
+			 * In this situation lines a and b are drawn in the same x-coordinate even though they are not
+			 * at a local maximum (on the second y-coordinate above). In this case we should treat them
+			 * as a local maximum.
+			*/
+
+			if(i == 0 || (active_lines[i-1][0] != active_lines[i][0])) {
 				// Rule is from p5 of http://web.cs.ucdavis.edu/~ma/ECS175_S00/Notes/0411_b.pdf:
 				// if two edges are the same, count only if the edge is the ymin.
 				is_drawing = 1 - is_drawing;
-			} 
+			} else if (active_lines[i][4]) { // "does count towards parity" when edges are the same
+				is_drawing = 1 - is_drawing;
+			}
 
 			prev_x = next_x;
 		}
