@@ -167,7 +167,7 @@ class ShapeMaker:
 			cmd_minor = self.next_byte()
 			data.append(cmd_minor)
 
-			if cmd_minor & 0xd0 == 0xd0:
+			if cmd_minor & 0xf0 == 0xd0:
 				# Drawing command
 				num_points = self.next_byte()
 				data.append(num_points)
@@ -175,6 +175,10 @@ class ShapeMaker:
 			elif cmd_minor in (0xe6, 0xe7, 0xe8):
 				# Tweening
 				data.extend(list(self.handle.read(6)))
+			elif cmd_minor == 0xf2:
+				unknown = list(self.handle.read(6))
+				print(unknown)
+				data.extend(unknown)
 			else:
 				print("Unknown cmd %02x @%06x" % (cmd_minor, self.handle.tell() - 1))
 				raise NotImplementedError()

@@ -10,15 +10,21 @@
 
 #define ANIM_SOURCE_WIDTH 256
 #define ANIM_SOURCE_HEIGHT 204
+#define MAX_TWEENED_VERTICES 512
 
 int anim_scale;
 int anim_offset_x;
 int anim_offset_y;
 
+uint8_t current_tween[MAX_TWEENED_VERTICES * 2];
+
 void anim_init(int display_width, int display_height) {
 	/* Calculate scale and offset for animation.
 	 * The original animations are nominally 256 x 204 (apparently), so find the best integer scale which matches that,
-	 * the centre the result horizontally but ensure it touches the bottom of the display vertically.
+	 * then centre the result horizontally but ensure it touches the bottom of the display vertically.
+	 *
+	 * TODO we'll want to change this on a scene-by-scene basis I think: it's better to have the figure fullscreen
+	 * and slightly cropped than uncropped but far away.
 	*/
 
 	int scalex = display_width / ANIM_SOURCE_WIDTH;
@@ -48,6 +54,8 @@ void anim_draw(struct animation *anim, int frame_idx)
 		return;
 	}
 
+	graphics_planar_clear(1);
+
 	for(uint8_t i = 0; i < num_objects; i++) {
 		data = anim_draw_object(data);
 	}
@@ -58,11 +66,32 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 	uint8_t draw_cmd = *data++;
 	switch(draw_cmd) {
 		case 0xd2:
+		case 0xd3:
 		case 0xde:
 		{
 			int num_vertices = *data++;
-			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_scale, anim_offset_x, anim_offset_y, 2);
+			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_scale, anim_offset_x, anim_offset_y, 1);
 			data += (num_vertices * 2);
+			break;
+		}
+		case 0xe6:
+		case 0xe7:
+		case 0xe8:
+		case 0xf2:
+		{
+			int bitplane_idx = 0; //cmd == 0xe6? 0: 2;
+			uint8_t *tween_from = data;
+			uint8_t *tween_to   = data;
+
+			tween_from     -= ((data[0] << 8) + (data[1])); data += 2;
+			tween_to       += ((data[0] << 8) + (data[1])); data += 2;
+			int tween_t     = *data++; // position in tween
+			int tween_count = *data++;
+
+			uint8_t *shape = lerp_tween(tween_from, tween_to, tween_t, tween_count);
+
+			int num_vertices = *shape++;
+			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, shape, anim_scale, anim_offset_x, anim_offset_y, 1);
 			break;
 		}
 		default:
@@ -70,6 +99,46 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 			break;
 	}
 	return data;
+}
+
+uint8_t *lerp_tween(uint8_t *tween_from, uint8_t *tween_to, int tween_t, int tween_count)
+{
+	// We expect these to be draw commands (i.e. 0xd2) followed by lengths.
+	if(*tween_from++ & 0xd0 != 0xd0) {
+		fprintf(stderr, "Unexpected tween idx (from)");
+	}
+
+	if(*tween_to++ & 0xd0 != 0xd0) {
+		fprintf(stderr, "Unexpected tween idx (to)");
+	}
+
+	int tween_from_length = *tween_from++;
+	int tween_to_length   = *tween_to++;
+
+	uint8_t *pos = current_tween;
+
+	int points = tween_from_length > tween_to_length ? tween_from_length: tween_to_length;
+	*(pos++)= points;
+
+	float point_multiplier_from = (float)tween_from_length / points;
+	float point_multiplier_to   = (float)tween_to_length / points;
+
+	float amt = (float)tween_t / tween_count;
+
+	for(int i = 0; i < points; i++) {
+		int point_from = i * point_multiplier_from;
+		int point_to   = i * point_multiplier_to;
+
+		uint8_t from_y = tween_from[point_from * 2];
+		uint8_t from_x = tween_from[(point_from * 2) + 1];
+		uint8_t to_y = tween_to[point_to * 2];
+		uint8_t to_x = tween_to[(point_to * 2) + 1];
+
+		*pos++ = from_y + (amt * (to_y - from_y));
+		*pos++ = from_x + (amt * (to_x - from_x));
+	}
+
+	return current_tween;
 }
 
 static uint8_t *read_entire_file(char *filename, ssize_t *size_out) {

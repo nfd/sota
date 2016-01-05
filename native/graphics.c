@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <inttypes.h>
+#include <stdbool.h>
 #include <SDL2/SDL.h>
 
 SDL_Window *window;
@@ -23,11 +24,13 @@ uint32_t palette[32];
 
 /* Data related to the polygon fill algorithm. Must be initialised because it depends on the window height. */
 struct poly_elem {
-	float xmin;
+	float xcurr;
 	int ymax;
 	float grad_recip;
 	struct poly_elem *prev;
+	// original vertex info
 	int ymin;
+	int xmin;
 };
 
 struct poly_elem **edge_table;
@@ -127,6 +130,7 @@ static void planar_line_horiontal(int bitplane_idx, int y, int start_x, int end_
 	uint8_t pen = 1 << bitplane_idx;
 	
 	bitplane += (y * bitplane_width) + start_x;
+
 	for(int length = end_x - start_x; length; length--) {
 		*bitplane++ = pen;
 	}
@@ -155,9 +159,9 @@ static inline void del_active(int idx)
 static int active_list_comparator(const void *lhs, const void *rhs) {
 	const struct poly_elem * const*pleft = lhs;
 	const struct poly_elem * const*pright = rhs;
-	if((*pleft)->xmin < (*pright)->xmin)
+	if((*pleft)->xcurr < (*pright)->xcurr)
 		return -1;
-	if((*pleft)->xmin > (*pright)->xmin)
+	if((*pleft)->xcurr > (*pright)->xcurr)
 		return 1;
 	return 0;
 }
@@ -170,7 +174,7 @@ int graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *dat
 	// This tutorial cleared up some corner cases:
 	// http://web.cs.ucdavis.edu/~ma/ECS175_S00/Notes/0411_b.pdf
 
-	// Line info entry is [xmin, ymax, 1/m, previous-idx, ymin]
+	// Line info entry is [xcurr, ymax, 1/m, previous-idx, ymin]
 	// line info is indexed from the edge table: edge table for a given y co-ordinate (ymin)
 	// is an index into the line_info table.
 	int next_line_info = 0;
@@ -216,11 +220,12 @@ int graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *dat
 			global_ymax = y1;
 
 		struct poly_elem *elem = &(line_info[next_line_info++]);
-		elem->xmin = x0;
+		elem->xcurr = x0;
 		elem->ymax = y1;
 		elem->grad_recip = ((float)(x1 - x0)) / ((float)(y1 - y0));
 		elem->prev = edge_table[y0];
 		elem->ymin = y0;
+		elem->xmin = x0;
 
 		edge_table[y0] = elem;
 	}
@@ -232,6 +237,37 @@ int graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *dat
 	for(int y = global_ymin; y <= global_ymax; y++) {
 		struct poly_elem *active;
 
+		// Move all edges with ymin == y into the active line table.
+		active = edge_table[y];
+		while(active) {
+			add_active(active);
+			active = active->prev;
+		}
+
+		// Sort the active edge table on xcurr 
+		qsort(active_list, next_active_list, sizeof(struct poly_elem *), active_list_comparator);
+
+		// Draw the lines.
+		int is_drawing = 0;
+		int prev_x = -1;
+		for(i = 0; i < next_active_list; i++) {
+			int next_x = is_drawing ? floorf(active_list[i]->xcurr) : ceilf(active_list[i]->xcurr);
+
+			bool is_vertex = fabs(active_list[i]->xmin - active_list[i]->xcurr) < 0.5
+				&& (active_list[i]->ymax == y || active_list[i]->ymin == y);
+
+			if(is_drawing) {
+				// TODO: this sometimes results in lines where prev_x = next_x - 2. Figure out why.
+				planar_line_horiontal(bitplane_idx, y + yofs, xofs + prev_x, xofs + next_x);
+			}
+
+			if((!is_vertex) || (active_list[i]->ymax == y)) {
+				is_drawing = 1 - is_drawing;
+			}
+
+			prev_x = next_x;
+		}
+
 		// Remove active edges where ymax == y
 		for(i = 0; i < next_active_list; /* empty */) {
 			if(active_list[i]->ymax == y) {
@@ -241,40 +277,17 @@ int graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *dat
 			}
 		}
 
-		// Move all edges with ymin == y into the active line table.
-		active = edge_table[y];
-		while(active) {
-			add_active(active);
-			active = active->prev;
-		}
-
-		// Sort the active edge table on xmin 
-		qsort(active_list, next_active_list, sizeof(struct poly_elem *), active_list_comparator);
-
-		// Draw the lines.
-		int is_drawing = 0;
-		int prev_x = -1;
-		for(i = 0; i < next_active_list; i++) {
-			int next_x = is_drawing ? floorf(active_list[i]->xmin) : ceilf(active_list[i]->xmin);
-
-			if(is_drawing) {
-				// TODO: this sometimes results in lines where prev_x = next_x - 2. Figure out why.
-				planar_line_horiontal(bitplane_idx, y + yofs, xofs + prev_x, xofs + next_x);
-			}
-
-			if(prev_x != next_x
-					|| ((active_list[i - 1]->ymin == y) || (active_list[i]->ymin == y)) ) {
-				is_drawing = 1 - is_drawing;
-			} 
-
-			prev_x = next_x;
-		}
 
 		// Update the gradients in AET.
 		for(i = 0; i < next_active_list; i++) {
-			active_list[i]->xmin += active_list[i]->grad_recip;
+			active_list[i]->xcurr += active_list[i]->grad_recip;
 		}
 	}
+}
+
+void graphics_planar_clear(int bitplane_idx)
+{
+	memset(plane[bitplane_idx], 0, bitplane_width * bitplane_height);
 }
 
 /* Combine bitplanes */
