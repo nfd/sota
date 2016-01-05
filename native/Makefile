@@ -1,4 +1,4 @@
-OBJS=main.o graphics.o anim.o palettes.o
+OBJS=main.o graphics.o anim.o palettes.o background.o
 
 LIBS=-lSDL2 -lm
 CFLAGS=-g

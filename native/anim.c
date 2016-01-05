@@ -9,7 +9,7 @@
 #include "graphics.h"
 
 #define ANIM_SOURCE_WIDTH 256
-#define ANIM_SOURCE_HEIGHT 204
+#define ANIM_SOURCE_HEIGHT 200
 #define MAX_TWEENED_VERTICES 512
 
 int anim_scale;
@@ -54,7 +54,7 @@ void anim_draw(struct animation *anim, int frame_idx)
 		return;
 	}
 
-	graphics_planar_clear(1);
+	graphics_planar_clear(0);
 
 	for(uint8_t i = 0; i < num_objects; i++) {
 		data = anim_draw_object(data);
@@ -70,7 +70,7 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 		case 0xde:
 		{
 			int num_vertices = *data++;
-			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_scale, anim_offset_x, anim_offset_y, 1);
+			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_scale, anim_offset_x, anim_offset_y, 0);
 			data += (num_vertices * 2);
 			break;
 		}
@@ -91,7 +91,7 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 			uint8_t *shape = lerp_tween(tween_from, tween_to, tween_t, tween_count);
 
 			int num_vertices = *shape++;
-			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, shape, anim_scale, anim_offset_x, anim_offset_y, 1);
+			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, shape, anim_scale, anim_offset_x, anim_offset_y, 0);
 			break;
 		}
 		default:

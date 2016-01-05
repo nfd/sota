@@ -1,9 +1,11 @@
 #include <stdio.h>
+#include <stdbool.h>
 #include <SDL2/SDL.h>
 
 #include "graphics.h"
 #include "palettes.h"
 #include "anim.h"
+#include "background.h"
 
 /* Thinking for the overall demo framework:
  *
@@ -54,21 +56,31 @@ int main(int argc, char **argv) {
 
 	graphics_init();
 	anim_init(graphics_width(), graphics_height());
+	background_init();
 
+	background_init_concentric_circles();
 	graphics_set_palette(palette_dancer_1_length, palette_dancer_1);
 
-	for(int i = 0; i < 210; i++) {
-		SDL_Event event;
+	bool getout = false;
 
-		anim_draw(anim, i);
-		graphics_planar_render();
-		
-		if(SDL_WaitEventTimeout(&event, 10) != 0) {
-			switch(event.type) {
-				case SDL_KEYUP:
-					i = 209;
-					break;
+	while(!getout) {
+		for(int i = 0; i < 210; i++) {
+			SDL_Event event;
+
+			anim_draw(anim, i);
+			background_concentric_circles_tick(i);
+			graphics_planar_render();
+			
+			if(SDL_WaitEventTimeout(&event, 10) != 0) {
+				switch(event.type) {
+					case SDL_KEYUP:
+						getout = true;
+						break;
+				}
 			}
+
+			if(getout)
+				break;
 		}
 	}
 

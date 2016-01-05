@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <SDL2/SDL.h>
 
+#include "graphics.h"
+
 SDL_Window *window;
 SDL_Renderer *renderer;
 SDL_Texture *texture; // which we will update every frame.
@@ -18,6 +20,8 @@ uint8_t *plane[NUM_BITPLANES];
 
 /* For now, bitplanes are 2x the width and height of the window */
 int bitplane_width, bitplane_height;
+
+int plane_offset[NUM_BITPLANES];
 
 /* Current palette */
 uint32_t palette[32];
@@ -43,6 +47,21 @@ int graphics_height() {
 	return window_height;
 }
 
+int graphics_bitplane_width() {
+	return bitplane_width;
+}
+
+int graphics_bitplane_height() {
+	return bitplane_height;
+}
+
+void graphics_bitplane_set_offset(int bitplane_idx, int x, int y)
+{
+	int offset = (bitplane_width * y) + x;
+
+	plane_offset[bitplane_idx] = offset;
+}
+
 int graphics_init() {
 	SDL_DisplayMode currentMode;
 
@@ -51,7 +70,8 @@ int graphics_init() {
 		return -1;
 	}
 
-	window = SDL_CreateWindow("State Of The Art", 0, 0, currentMode.w, currentMode.h, SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_OPENGL);
+	//window = SDL_CreateWindow("State Of The Art", 0, 0, currentMode.w, currentMode.h, SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_OPENGL);
+	window = SDL_CreateWindow("State Of The Art", 0, 0, 640, 480, SDL_WINDOW_OPENGL);
 	if(window == NULL) {
 		fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
 		return -1;
@@ -94,6 +114,7 @@ int graphics_init() {
 			fprintf(stderr, "bitplane alloc\n");
 			return -1; // we don't clean up but this is fatal anyway
 		}
+		plane_offset[i] = 0;
 	}
 
 	SDL_RenderClear(renderer);
@@ -121,9 +142,13 @@ void graphics_set_palette(size_t num_elements, uint32_t *elements) {
 	}
 }
 
-static void planar_line_horiontal(int bitplane_idx, int y, int start_x, int end_x)
+static void planar_line_horizontal(int bitplane_idx, int y, int start_x, int end_x)
 {
-	if(start_x >= end_x)
+	y = min(max(y, 0), bitplane_height - 1);
+	start_x = max(min(start_x, bitplane_width - 1), 0);
+	end_x = min(max(end_x, 0), bitplane_width - 1);
+
+	if(start_x > end_x)
 		return;
 
 	uint8_t *bitplane = plane[bitplane_idx];
@@ -134,6 +159,32 @@ static void planar_line_horiontal(int bitplane_idx, int y, int start_x, int end_
 	for(int length = end_x - start_x; length; length--) {
 		*bitplane++ = pen;
 	}
+}
+
+static void planar_line_vertical(int bitplane_idx, int x, int start_y, int end_y)
+{
+	x = min(max(x, 0), bitplane_width - 1);
+	start_y = max(min(start_y, bitplane_height - 1), 0);
+	end_y = min(max(end_y, 0), bitplane_height - 1);
+
+	if(start_y > end_y)
+		return;
+
+	uint8_t *bitplane = plane[bitplane_idx];
+	uint8_t pen = 1 << bitplane_idx;
+	
+	bitplane += (start_y * bitplane_width) + x;
+
+	for(int length = end_y - start_y; length; length--) {
+		*bitplane = pen;
+		bitplane += bitplane_width;
+	}
+}
+
+static inline void planar_putpixel(int bitplane_idx, int x, int y)
+{
+	if(x >= 0 && x < bitplane_width && y >= 0 && y <= bitplane_height)
+		plane[bitplane_idx][(y * bitplane_width) + x] = (1 << bitplane_idx);
 }
 
 /* Heart of everything! */
@@ -213,6 +264,12 @@ int graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *dat
 			tmp = x0; x0 = x1; x1 = tmp;
 		}
 
+		y0 = min(max(0, y0), window_height - 1);
+		y1 = max(min(window_height - 1, y1), 0);
+
+		x0 = min(max(0, x0), window_width - 1);
+		x1 = max(min(window_width - 1, x1), 0);
+
 		if(y0 < global_ymin)
 			global_ymin = y0; // highest point of the polygon.
 
@@ -258,7 +315,7 @@ int graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *dat
 
 			if(is_drawing) {
 				// TODO: this sometimes results in lines where prev_x = next_x - 2. Figure out why.
-				planar_line_horiontal(bitplane_idx, y + yofs, xofs + prev_x, xofs + next_x);
+				planar_line_horizontal(bitplane_idx, y + yofs, xofs + prev_x, xofs + next_x);
 			}
 
 			if((!is_vertex) || (active_list[i]->ymax == y)) {
@@ -285,6 +342,48 @@ int graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *dat
 	}
 }
 
+void draw_thick_circle(int xc, int yc, int radius, int thickness, int bitplane_idx) {
+	if(radius <= 0)
+		return;
+
+	int xouter = radius;
+    int xinner = radius - thickness;;
+    int y = 0;
+    int errouter = 1 - xouter;
+    int errinner = 1 - xinner;
+
+	while(xouter >= y) {
+		planar_line_horizontal(bitplane_idx, yc + y, xc + xinner, xc + xouter);
+		planar_line_vertical(bitplane_idx, xc + y,  yc + xinner, yc + xouter);
+		planar_line_horizontal(bitplane_idx, yc + y, xc - xouter, xc - xinner);
+		planar_line_vertical(bitplane_idx, xc - y,  yc + xinner, yc + xouter);
+		planar_line_horizontal(bitplane_idx, yc - y, xc - xouter, xc - xinner);
+		planar_line_vertical(bitplane_idx, xc - y,  yc - xouter, yc - xinner);
+		planar_line_horizontal(bitplane_idx, yc - y, xc + xinner, xc + xouter);
+		planar_line_vertical(bitplane_idx, xc + y,  yc - xouter, yc - xinner);
+
+		y++;
+
+		if (errouter < 0) {
+			errouter += 2 * y + 1;
+		} else {
+			xouter --;
+			errouter += 2 * (y - xouter + 1);
+		}
+
+		if (y > radius) {
+			xinner = y;
+		} else {
+			if (errinner < 0) {
+				errinner += 2 * y + 1;
+			} else {
+				xinner --;
+				errinner += 2 * (y - xinner + 1);
+			}
+		}
+	}
+}
+
 void graphics_planar_clear(int bitplane_idx)
 {
 	memset(plane[bitplane_idx], 0, bitplane_width * bitplane_height);
@@ -294,13 +393,23 @@ void graphics_planar_clear(int bitplane_idx)
 void graphics_planar_render()
 {
 	//SDL_RenderPresent(renderer);
+	uint8_t *plane_idx_0 = plane[0] + plane_offset[0];
+	uint8_t *plane_idx_1 = plane[1] + plane_offset[1];
+	uint8_t *plane_idx_2 = plane[2] + plane_offset[2];
+	uint8_t *plane_idx_3 = plane[3] + plane_offset[3];
+
 	for(int y = 0; y < window_height; y++) {
 		for(int x = 0; x < window_width; x++) {
 			int idx = (y * bitplane_width) + x;
 
-			uint8_t colour = plane[0][idx] | plane[1][idx] | plane[2][idx] | plane[3][idx];
+			uint8_t colour = *(plane_idx_0 + x)| *(plane_idx_1 + x) | *(plane_idx_2 + x) | *(plane_idx_3 + x);
 			framebuffer[ (y * window_width) + x] = palette[colour];
 		}
+
+		plane_idx_0 += bitplane_width;
+		plane_idx_1 += bitplane_width;
+		plane_idx_2 += bitplane_width;
+		plane_idx_3 += bitplane_width;
 	}
 
 	SDL_UpdateTexture(texture, NULL, framebuffer, window_width * 4);
