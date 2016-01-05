@@ -25,7 +25,7 @@ var palette = new Array(0xff000000, 0xff000000, 0xff007711, 0xff0000dd, 0xff7700
 /*
 var palette = new Array(0xff000000, 0xffffffff, 0xff007711, 0xff0000dd, 0xff770077, 0xff0077dd, 0xff111177, 0xff00bbbb,
 		0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000);
-		*/
+*/
 
 
 function setup() {
@@ -43,7 +43,10 @@ function setup() {
 	});
 
 	// problematic points: 209, 195, 19, 8, 101
-	idxElem.value = "0";
+	//idxElem.value = "0";
+
+	// other anim: 34, 37
+	idxElem.value = "37";
 
 	viewport_stride = canvas.width;
 
@@ -212,8 +215,6 @@ function draw_polyfill(bitplane_idx, data, base_idx, length) {
 			continue;
 		}
 
-		var counts_towards_parity = y0 > y1;
-
 		// ensure y0 <= y1
 		if(y0 > y1) {
 			var tmp;
@@ -227,7 +228,7 @@ function draw_polyfill(bitplane_idx, data, base_idx, length) {
 		if(y1 > global_ymax) 
 			global_ymax = y1;
 
-		line_info.push([x0, y1, (x1 - x0) / (y1 - y0), edge_table[y0], counts_towards_parity]);
+		line_info.push([x0, y1, (x1 - x0) / (y1 - y0), edge_table[y0], y0, x0]);
 		edge_table[y0] = line_info.length - 1;
 	}
 
@@ -247,16 +248,6 @@ function draw_polyfill(bitplane_idx, data, base_idx, length) {
 
 	// Scaline algorithm.
 	for(var y = global_ymin; y <= global_ymax; y++) {
-		// Remove active edges where ymax == y
-		i = 0;
-		while(i < active_lines.length) {
-			if(active_lines[i][1] == y) {
-				active_lines.splice(i, 1);
-			} else {
-				i++;
-			}
-		}
-		
 		// Move all edges with ymin == y into the active line table.
 		var line_info_idx = edge_table[y];
 		while(line_info_idx != undefined) {
@@ -274,14 +265,17 @@ function draw_polyfill(bitplane_idx, data, base_idx, length) {
 
 		// Draw the lines.
 		var is_drawing = 0;
-		var prev_x = -1;
+		var prev_x = 0;
 		for(i = 0; i < active_lines.length; i++) {
 			var next_x = is_drawing ? Math.floor(active_lines[i][0]) : Math.ceil(active_lines[i][0]);
 
+			var is_vertex = Math.abs(active_lines[i][5] - active_lines[i][0]) < 0.1
+				&& (active_lines[i][1] == y || active_lines[i][4] == y);
+
 			/*
-			if(y == 132) {
+			if(y == 70) {
 				fill_value = 3;
-				log("active " + i + " " + next_x + " " + active_lines[i]);
+				log(y + ": drawing " + prev_x + " to " + next_x +" (y0=" + active_lines[i][4] + ", y1=" + active_lines[i][1] + "): " + is_drawing + " is vertex " + is_vertex);
 			} else {
 				fill_value = 1<<bitplane_idx;
 			}
@@ -295,25 +289,28 @@ function draw_polyfill(bitplane_idx, data, base_idx, length) {
 				}
 			}
 
-			/* So sometimes we have this:
-			 *       |  |ab|  |
-			 *       |  |ab|  |
-			 *
-			 * In this situation lines a and b are drawn in the same x-coordinate even though they are not
-			 * at a local maximum (on the second y-coordinate above). In this case we should treat them
-			 * as a local maximum.
-			*/
-
-			if(i == 0 || (active_lines[i-1][0] != active_lines[i][0])) {
-				// Rule is from p5 of http://web.cs.ucdavis.edu/~ma/ECS175_S00/Notes/0411_b.pdf:
-				// if two edges are the same, count only if the edge is the ymin.
+			if(!is_vertex) {
 				is_drawing = 1 - is_drawing;
-			} else if (active_lines[i][4]) { // "does count towards parity" when edges are the same
+			/*} else if (active_lines[i][1] == active_lines[i-1][1] 
+					|| active_lines[i][4] == active_lines[i-1][4]) {*/
+			} else if(active_lines[i][1] == y) {
 				is_drawing = 1 - is_drawing;
 			}
 
+
 			prev_x = next_x;
 		}
+
+		// Remove active edges where ymax == y
+		i = 0;
+		while(i < active_lines.length) {
+			if(active_lines[i][1] == y) {
+				active_lines.splice(i, 1);
+			} else {
+				i++;
+			}
+		}
+		
 
 		// Update the gradients in AET.
 		for(i = 0; i < active_lines.length; i++) {
@@ -393,7 +390,7 @@ function draw_multiple(ctx, idx)
 
 			idx = draw(bitplane_idx, data, idx, drawn_in_plane[bitplane_idx]==0);
 			drawn_in_plane[bitplane_idx] = 1;
-		} else if (cmd == 0xe6 || cmd == 0xe7 || cmd == 0xe8) {
+		} else if (cmd == 0xe6 || cmd == 0xe7 || cmd == 0xe8 || cmd == 0xf2) {
 			var bitplane_idx = 0; //cmd == 0xe6? 0: 2;
 
 			var current_position = idx;
@@ -406,9 +403,6 @@ function draw_multiple(ctx, idx)
 			var shape = lerp_tween(tween_from, tween_to, tween_t, tween_count);
 			draw(bitplane_idx, shape, 0, drawn_in_plane[bitplane_idx]==0);
 			drawn_in_plane[bitplane_idx] = 1;
-		} else if (cmd == 0xf2) {
-			// ???
-			idx += 6;
 		} else {
 			console.log("unexpected draw cmd " + cmd);
 			console.log(args);
