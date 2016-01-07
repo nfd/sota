@@ -1,4 +1,4 @@
-OBJS=main.o graphics.o anim.o palettes.o background.o files.o choreography.o
+OBJS=main.o graphics.o anim.o background.o files.o choreography.o
 
 LIBS=-lSDL2 -lm
 CFLAGS=-g -O2

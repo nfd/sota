@@ -3,7 +3,6 @@
 #include <SDL2/SDL.h>
 
 #include "graphics.h"
-#include "palettes.h"
 #include "anim.h"
 #include "background.h"
 #include "choreography.h"
