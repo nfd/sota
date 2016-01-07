@@ -46,7 +46,7 @@ function setup() {
 	//idxElem.value = "0";
 
 	// other anim: 34, 37
-	idxElem.value = "37";
+	idxElem.value = "0";
 
 	viewport_stride = canvas.width;
 
@@ -74,7 +74,7 @@ function setup() {
 
 	logtextbox = document.getElementById("commandstextbox");
 
-	//loadScript("script0012bc.json");
+	//loadScript("script010800.json");
 	//loadScript("script067080.json");
 	loadScript("script067230.json");
 	//loadScript("script09e1b8.json");
