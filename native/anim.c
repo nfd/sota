@@ -7,12 +7,14 @@
 
 #include "anim.h"
 #include "graphics.h"
+#include "files.h"
 
 #define ANIM_SOURCE_WIDTH 256
 #define ANIM_SOURCE_HEIGHT 200
 #define MAX_TWEENED_VERTICES 512
 
-int anim_scale;
+float anim_scale_x;
+float anim_scale_y;
 int anim_offset_x;
 int anim_offset_y;
 
@@ -27,15 +29,11 @@ void anim_init(int display_width, int display_height) {
 	 * and slightly cropped than uncropped but far away.
 	*/
 
-	int scalex = display_width / ANIM_SOURCE_WIDTH;
-	int scaley = display_height / ANIM_SOURCE_HEIGHT;
+	anim_scale_x = ((float)display_width) / ANIM_SOURCE_WIDTH;
+	anim_scale_y = ((float)display_height) / ANIM_SOURCE_HEIGHT;
 
-	anim_scale  = scalex < scaley ? scalex : scaley;
-	if(anim_scale  == 0)
-		anim_scale  = 1;
-
-	anim_offset_x = (display_width / 2) - ( (ANIM_SOURCE_WIDTH * anim_scale) / 2);
-	anim_offset_y = display_height - (ANIM_SOURCE_HEIGHT * anim_scale);
+	anim_offset_x = (display_width / 2) - ( (ANIM_SOURCE_WIDTH * anim_scale_x) / 2);
+	anim_offset_y = display_height - (ANIM_SOURCE_HEIGHT * anim_scale_y);
 }
 
 static uint8_t *anim_draw_object(uint8_t *data);
@@ -67,10 +65,11 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 	switch(draw_cmd) {
 		case 0xd2:
 		case 0xd3:
+		case 0xd4:
 		case 0xde:
 		{
 			int num_vertices = *data++;
-			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_scale, anim_offset_x, anim_offset_y, 0);
+			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_scale_x, anim_scale_y, anim_offset_x, anim_offset_y, 0);
 			data += (num_vertices * 2);
 			break;
 		}
@@ -91,7 +90,7 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 			uint8_t *shape = lerp_tween(tween_from, tween_to, tween_t, tween_count);
 
 			int num_vertices = *shape++;
-			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, shape, anim_scale, anim_offset_x, anim_offset_y, 0);
+			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, shape, anim_scale_x, anim_scale_y, anim_offset_x, anim_offset_y, 0);
 			break;
 		}
 		default:
@@ -139,49 +138,6 @@ uint8_t *lerp_tween(uint8_t *tween_from, uint8_t *tween_to, int tween_t, int twe
 	}
 
 	return current_tween;
-}
-
-static uint8_t *read_entire_file(char *filename, ssize_t *size_out) {
-	uint8_t *buf;
-	
-	int h = open(filename, O_RDONLY);
-	if(h < 0) {
-		perror(filename);
-		return NULL;
-	}
-
-	struct stat statbuf;
-	if(fstat(h, &statbuf) != 0)  {
-		close(h);
-		return NULL;
-	}
-
-	buf = malloc(statbuf.st_size);
-	if(buf == NULL) {
-		close(h);
-		return NULL;
-	}
-
-	ssize_t to_read = statbuf.st_size;
-	uint8_t *current = buf;
-	while(to_read) {
-		ssize_t amt_read = read(h, current, to_read);
-		if(amt_read < 0) {
-			close(h);
-			free(buf);
-			return NULL;
-		}
-		to_read -= amt_read;
-		current += amt_read;
-	}
-
-	close(h);
-
-	if(size_out) {
-		*size_out = statbuf.st_size;
-	}
-
-	return buf;
 }
 
 struct animation *anim_load(char *basename) {

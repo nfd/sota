@@ -1,7 +1,7 @@
-OBJS=main.o graphics.o anim.o palettes.o background.o
+OBJS=main.o graphics.o anim.o palettes.o background.o files.o choreography.o
 
 LIBS=-lSDL2 -lm
-CFLAGS=-g
+CFLAGS=-g -O2
 
 sota: $(OBJS)
 	$(CC) -o $@ $+ $(LIBS)

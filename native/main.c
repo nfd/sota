@@ -6,6 +6,7 @@
 #include "palettes.h"
 #include "anim.h"
 #include "background.h"
+#include "choreography.h"
 
 /* Thinking for the overall demo framework:
  *
@@ -48,9 +49,16 @@ int main(int argc, char **argv) {
 	}
 
 
+	/*
 	struct animation *anim = anim_load("067230");
 	if(anim == NULL) {
 		fprintf(stderr, "anim_load\n");
+		return 1;
+	}
+	*/
+
+	if(choreography_init() == false) {
+		fprintf(stderr, "couldn't load choreography\n");
 		return 1;
 	}
 
@@ -58,10 +66,16 @@ int main(int argc, char **argv) {
 	anim_init(graphics_width(), graphics_height());
 	background_init();
 
+	choreography_run_demo(0);
+
+#if 0
 	background_init_concentric_circles();
 	graphics_set_palette(palette_dancer_1_length, palette_dancer_1);
 
 	bool getout = false;
+
+
+	// TODO: It seems like the demo is running at 25 FPS, or 40 ms / frame.
 
 	while(!getout) {
 		for(int i = 0; i < 210; i++) {
@@ -71,7 +85,7 @@ int main(int argc, char **argv) {
 			background_concentric_circles_tick(i);
 			graphics_planar_render();
 			
-			if(SDL_WaitEventTimeout(&event, 10) != 0) {
+			if(SDL_WaitEventTimeout(&event, 35) != 0) {
 				switch(event.type) {
 					case SDL_KEYUP:
 						getout = true;
@@ -84,10 +98,10 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	graphics_shutdown();
-
 	anim_destroy(anim);
+#endif
 
+	graphics_shutdown();
 	SDL_Quit();
 }
 

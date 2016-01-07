@@ -217,7 +217,7 @@ static int active_list_comparator(const void *lhs, const void *rhs) {
 	return 0;
 }
 
-int graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *data, int scale, int xofs, int yofs, int bitplane_idx)
+int graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *data, float scalex, float scaley, int xofs, int yofs, int bitplane_idx)
 {
 	/* Polygon fill algorithm */
 	// The following tutorial was most helpful:
@@ -240,16 +240,16 @@ int graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *dat
 	for(i=0; i < (num_vertices * 2); i+= 2) {
 		int y0, x0, y1, x1;
 
-		y0 = data[i] * scale;
-		x0 = data[i+1] * scale;
+		y0 = data[i] * scaley;
+		x0 = data[i+1] * scalex;
 
 		if(i == (num_vertices * 2) - 2) {
 			// close the shape
-			y1 = data[0] * scale;
-			x1 = data[1] * scale;
+			y1 = data[0] * scaley;
+			x1 = data[1] * scalex;
 		} else {
-			y1 = data[i+2] * scale;
-			x1 = data[i+3] * scale;
+			y1 = data[i+2] * scaley;
+			x1 = data[i+3] * scalex;
 		}
 
 		if(y0 == y1) {
@@ -398,18 +398,19 @@ void graphics_planar_render()
 	uint8_t *plane_idx_2 = plane[2] + plane_offset[2];
 	uint8_t *plane_idx_3 = plane[3] + plane_offset[3];
 
+	int fb_idx = 0;
+
 	for(int y = 0; y < window_height; y++) {
 		for(int x = 0; x < window_width; x++) {
-			int idx = (y * bitplane_width) + x;
-
-			uint8_t colour = *(plane_idx_0 + x)| *(plane_idx_1 + x) | *(plane_idx_2 + x) | *(plane_idx_3 + x);
-			framebuffer[ (y * window_width) + x] = palette[colour];
+			uint8_t colour = *(plane_idx_0 + x) | *(plane_idx_1 + x) | *(plane_idx_2 + x) | *(plane_idx_3 + x);
+			framebuffer[fb_idx + x] = palette[colour];
 		}
 
 		plane_idx_0 += bitplane_width;
 		plane_idx_1 += bitplane_width;
 		plane_idx_2 += bitplane_width;
 		plane_idx_3 += bitplane_width;
+		fb_idx += window_width;
 	}
 
 	SDL_UpdateTexture(texture, NULL, framebuffer, window_width * 4);

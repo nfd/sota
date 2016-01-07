@@ -14,3 +14,6 @@ uint32_t palette_dancer_1[] = {
 
 int palette_dancer_1_length = sizeof(palette_dancer_1) / sizeof(uint32_t);
 
+
+// TODO remove this
+
