@@ -62,7 +62,7 @@ void graphics_bitplane_set_offset(int bitplane_idx, int x, int y)
 	plane_offset[bitplane_idx] = offset;
 }
 
-int graphics_init() {
+int graphics_init(bool fullscreen) {
 	SDL_DisplayMode currentMode;
 
 	if(SDL_GetCurrentDisplayMode(0, &currentMode) != 0) {
@@ -70,8 +70,11 @@ int graphics_init() {
 		return -1;
 	}
 
-	//window = SDL_CreateWindow("State Of The Art", 0, 0, currentMode.w, currentMode.h, SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_OPENGL);
-	window = SDL_CreateWindow("State Of The Art", 0, 0, 640, 480, SDL_WINDOW_OPENGL);
+	if(fullscreen) {
+		window = SDL_CreateWindow("State Of The Art", 0, 0, currentMode.w, currentMode.h, SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_OPENGL);
+	} else {
+		window = SDL_CreateWindow("State Of The Art", 0, 0, 640, 480, SDL_WINDOW_OPENGL);
+	}
 	if(window == NULL) {
 		fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
 		return -1;
@@ -116,6 +119,9 @@ int graphics_init() {
 		}
 		plane_offset[i] = 0;
 	}
+
+	// no mouse
+	SDL_ShowCursor(SDL_DISABLE);
 
 	SDL_RenderClear(renderer);
 	SDL_RenderPresent(renderer);

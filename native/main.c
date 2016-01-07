@@ -1,47 +1,55 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <SDL2/SDL.h>
+#include <unistd.h>
+#include <getopt.h>
 
 #include "graphics.h"
 #include "anim.h"
 #include "background.h"
 #include "choreography.h"
 
-/* Thinking for the overall demo framework:
- *
- * static portion:
- * - just a list of (start frame, effect, args) sorted on start frame.
- *
- * dynamic portion:
- * - a background effect,
- * - an animation effect
- * - a palette fade effect
- * - possibly other things.
- *
- * - the list of effect handlers currently instantiated. These will be self-removing.
- *
- * whenever we draw a new frame we catch-up on the static portion, adding things to the dynamic
- * portion, until we've caught up. 
- *
- * we then run each dynamic handler once, passing it the current frame.
- *
- * when a handler is finished it removes itself from the dynamic list.
- *
- * Example for first scene:
- *
- * 0: start background 
- * 0: set palette to (whatever)
- * 0: fade palette to (whatever) over 10 frames
- * 0: start animation of square-morph-to-dancer
- * 15 (or whatever): start dancer animation
- *
- * So implement this as a linked list stored in a block. Perhaps create it in Python, e.g.:
- *    <length><frame number><command><args>
- *
- * where to walk the list you can just continuously add 'length', which should be 16 bit.
-*/
+#define OPT_FULLSCREEN 1
+#define OPT_HELP 2
+
+struct option options[] = {
+	{"fullscreen", no_argument, NULL, OPT_FULLSCREEN},
+	{"help", no_argument, NULL, OPT_HELP},
+	{0, 0, 0, 0}
+};
+
+static void help() {
+	printf("State Of The Art\n");
+	printf("A demo by Spaceballs, revived by WzDD\n");
+	printf("Options:\n\n");
+	printf("  --fullscreen     : run in fullscreen rather than a 640x480 window\n");
+}
 
 int main(int argc, char **argv) {
+	bool fullscreen = false;
+
+	while(true) {
+		int opt = getopt_long(argc, argv, "", options, NULL);
+
+		if(opt == -1)
+			break;
+
+		switch(opt) {
+			default:
+			case '?':
+				return 1;
+			case OPT_FULLSCREEN:
+				fullscreen = true;
+				break;
+			case OPT_HELP:
+				help();
+				return 1;
+			case -1:
+				break;
+		}
+	}
+
+
 	if(SDL_Init(SDL_INIT_VIDEO) != 0) {
 		fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
 		return 1;
@@ -61,7 +69,7 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	graphics_init();
+	graphics_init(fullscreen);
 	anim_init(graphics_width(), graphics_height());
 	background_init();
 

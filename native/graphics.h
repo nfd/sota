@@ -1,7 +1,8 @@
 #include <inttypes.h>
 #include <stddef.h>
+#include <stdbool.h>
 
-int graphics_init();
+int graphics_init(bool fullscreen);
 int graphics_width();
 int graphics_height();
 int graphics_bitplane_width();
