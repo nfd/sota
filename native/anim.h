@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <stdbool.h>
 
 struct animation {
 	int num_frames;
@@ -7,6 +8,8 @@ struct animation {
 };
 
 void anim_init(int display_width, int display_height);
+void anim_set_bitplane(int bitplane);
+void anim_set_xor(bool xor);
 struct animation *anim_load(char *basename);
 int anim_destroy(struct animation *anim);
 void anim_draw(struct animation *anim, int frame);

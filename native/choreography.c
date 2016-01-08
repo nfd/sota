@@ -8,6 +8,7 @@
 #include "graphics.h"
 #include "anim.h"
 #include "background.h"
+#include "sound.h"
 
 #define FILENAME "data/choreography.bin"
 
@@ -16,11 +17,18 @@
 #define CMD_PALETTE 2
 #define CMD_FADETO 3
 #define CMD_ANIM 4
+#define CMD_PAUSE 5
+#define CMD_MOD 6
 
-#define MS_PER_TICK 20
+#define MOD_START 1
+#define MOD_STOP 2
+
+/* Frame rate the demo runs at. This doesn't affect the speed of the animations, 
+ * which run at 25 fps */
+#define MS_PER_FRAME 20
 
 struct choreography_header {
-	uint32_t start_tick;
+	uint32_t start_ms;
 	uint32_t length;
 	uint32_t cmd;
 };
@@ -38,7 +46,7 @@ struct choreography_palette {
 
 struct choreography_fadeto {
 	struct choreography_header header;
-	uint32_t ticks;
+	uint32_t ms;
 	uint32_t palette_cmd;
 	uint32_t count;
 	uint32_t values[32];
@@ -46,10 +54,23 @@ struct choreography_fadeto {
 
 struct choreography_anim {
 	struct choreography_header header;
-	uint32_t ticks_per_frame;
+	uint32_t ms_per_frame;
 	uint32_t frame_from;
 	uint32_t frame_to;
 	uint32_t name;
+	uint32_t bitplane;
+	uint32_t xor;
+};
+
+struct choreography_pause {
+	struct choreography_header header;
+	uint32_t end_ms;
+};
+
+struct choreography_mod {
+	struct choreography_header header;
+	uint32_t subcmd;
+	uint32_t arg;
 };
 
 static uint8_t *choreography;
@@ -58,10 +79,20 @@ static struct choreography_header *pos;
 
 /* Things which may be happening. */
 static struct {
-	struct animation *current_animation;
-	struct choreography_anim *current_animation_info;
-	int last_drawn_frame;
-	// TODO palette fades
+	// animations
+	struct animation *current_animation; // the anim data
+	struct choreography_anim *current_animation_info; // the choreography data
+	int last_drawn_frame; // to avoid unnecessary redraws
+
+	// palette fades
+	uint32_t fade_from[32]; // the constants feel so naughty
+	uint32_t fade_to[32]; // but they directly model Amiga hardware (OCS / ECS)
+	uint32_t fade_count;
+	int fade_start_ms;
+	int fade_end_ms;
+
+	// pausing
+	int pause_end_ms;
 } state;
 
 static inline struct choreography_header *next_header(struct choreography_header *current_header)
@@ -76,6 +107,9 @@ bool choreography_init()
 
 	state.current_animation = NULL;
 	state.current_animation_info = NULL;
+	state.fade_count = 0;
+
+	state.pause_end_ms = 0;
 
 	return choreography != NULL;
 }
@@ -96,7 +130,16 @@ static void cmd_palette(struct choreography_palette *palette) {
 }
 
 static void cmd_fadeto(struct choreography_fadeto *fadeto) {
-	// TODO
+	state.fade_start_ms = fadeto->header.start_ms;
+	state.fade_end_ms = state.fade_start_ms + fadeto->ms;
+	state.fade_count = fadeto->count;
+
+	graphics_get_palette(32, state.fade_from);
+	memcpy(state.fade_to, fadeto->values, fadeto->count * sizeof(uint32_t));
+
+	if(fadeto->count < 32) {
+		memset(&state.fade_to[fadeto->count], 0, (32 - fadeto->count) * sizeof(uint32_t));
+	}
 }
 
 static void cmd_anim(struct choreography_anim *anim) {
@@ -115,6 +158,24 @@ static void cmd_anim(struct choreography_anim *anim) {
 
 	if(state.current_animation == NULL) {
 		fprintf(stderr, "Couldn't load animation %x (pos %p)\n", anim->name, (uint8_t *)anim - choreography);
+	}
+
+	anim_set_bitplane(anim->bitplane);
+	anim_set_xor(anim->xor);
+}
+
+static void cmd_pause(struct choreography_pause *pause) {
+	state.pause_end_ms = pause->end_ms;
+}
+
+static void cmd_mod(struct choreography_mod *mod) {
+	switch(mod->subcmd) {
+		case MOD_START:
+			sound_mod_play(mod->arg);
+			break;
+		case MOD_STOP:
+			sound_mod_stop();
+			break;
 	}
 }
 
@@ -137,6 +198,12 @@ static void create_state_item()
 		case CMD_ANIM:
 			cmd_anim((struct choreography_anim *)pos);
 			break;
+		case CMD_PAUSE:
+			cmd_pause((struct choreography_pause *)pos);
+			break;
+		case CMD_MOD:
+			cmd_mod((struct choreography_mod *)pos);
+			break;
 		default:
 			/* This is bad */
 			fprintf(stderr, "Unknown choreography command %x\n", pos->cmd);
@@ -144,39 +211,23 @@ static void create_state_item()
 	}
 }
 
-static void catch_up(int ticks)
+static void create_new_state(int ms)
 {
-	/* Advance 'pos' to match 'ticks' but don't go past it. */
-	struct choreography_header *closest_older = pos;
-
-	while(pos->start_tick < ticks) {
-		closest_older = pos;
-
-		if(pos->cmd == CMD_END)
-			break;
-		pos = next_header(pos);
-	}
-
-	if(pos->start_tick > ticks) {
-		/* we went too far: we're somewhere in the middle of the previous sequence. */
-		pos = closest_older;
-	}
-
 	/* Create the state */
-	while(pos->start_tick <= ticks && pos->cmd != CMD_END) {
+	while(pos->start_ms <= ms && pos->cmd != CMD_END) {
 		create_state_item(pos);
 		pos = next_header(pos);
 	}
 }
 
-static void run(int tick) {
+static void run(int ms) {
 	/* Run everything in the queue. */
 
 	// Animation.
 	if(state.current_animation_info) {
 		/* Work out what frame we're supposed to be on. */
-		int anim_tick = tick - state.current_animation_info->header.start_tick;
-		int anim_frame = (anim_tick / state.current_animation_info->ticks_per_frame) + state.current_animation_info->frame_from;
+		int anim_ms = ms - state.current_animation_info->header.start_ms;
+		int anim_frame = (anim_ms / state.current_animation_info->ms_per_frame) + state.current_animation_info->frame_from;
 
 		if(anim_frame > state.current_animation_info->frame_to) {
 			/* We're done with this animation */
@@ -192,7 +243,21 @@ static void run(int tick) {
 
 	// TODO backgrounds
 
-	// TODO palette fades
+	// palette fades
+	if(state.fade_count != 0) {
+		if(ms > state.fade_end_ms) {
+			// we're done with this palette fade
+			graphics_set_palette(state.fade_count, state.fade_to);
+			state.fade_count = 0;
+		} else {
+			graphics_lerp_palette(state.fade_count, state.fade_from, state.fade_to, ms - state.fade_start_ms, state.fade_end_ms - state.fade_start_ms);
+		}
+	}
+
+	// pauses
+	if(ms > state.pause_end_ms) {
+		state.pause_end_ms = 0; // not even necessary to do this
+	}
 }
 
 static uint64_t gettime_ms()
@@ -208,21 +273,21 @@ static uint64_t gettime_ms()
 // TODO: include commands to switch pen between overwrite and XOR. It's important in the first sequence,
 // may already be encoded but don't care anymore. Or maybe I do. Argh.
 
-void choreography_run_demo(int tick)
+void choreography_run_demo(int ms)
 {
 	bool keepgoing = true;
 	uint64_t starttime = gettime_ms();
 
-	/* If 'tick' is initially >0, backdate startime */
-	starttime -= (tick * MS_PER_TICK);
+	/* If 'ms' is initially >0, backdate startime */
+	starttime -= ms;
 
 	while(keepgoing) {
 		uint64_t frametime = gettime_ms();
-		tick = (frametime - starttime) / MS_PER_TICK;
+		ms = frametime - starttime;
 
-		catch_up(tick);
-		run(tick);
-		
+		create_new_state(ms);
+		run(ms);
+
 		uint64_t frame_runtime = gettime_ms() - frametime;
 
 		//anim_draw(anim, i);
@@ -230,7 +295,7 @@ void choreography_run_demo(int tick)
 		graphics_planar_render();
 		
 		SDL_Event event;
-		if(SDL_WaitEventTimeout(&event, MS_PER_TICK - frame_runtime) != 0) {
+		if(SDL_WaitEventTimeout(&event, MS_PER_FRAME - frame_runtime) != 0) {
 			switch(event.type) {
 				case SDL_KEYUP:
 					keepgoing = false;

@@ -8,6 +8,7 @@
 #include "anim.h"
 #include "background.h"
 #include "choreography.h"
+#include "sound.h"
 
 #define OPT_FULLSCREEN 1
 #define OPT_HELP 2
@@ -50,7 +51,7 @@ int main(int argc, char **argv) {
 	}
 
 
-	if(SDL_Init(SDL_INIT_VIDEO) != 0) {
+	if(SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO) != 0) {
 		fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
 		return 1;
 	}
@@ -63,6 +64,11 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 	*/
+
+	if(sound_init() == false) {
+		fprintf(stderr, "couldn't init sound\n");
+		return 1;
+	}
 
 	if(choreography_init() == false) {
 		fprintf(stderr, "couldn't load choreography\n");
@@ -110,5 +116,6 @@ int main(int argc, char **argv) {
 
 	graphics_shutdown();
 	SDL_Quit();
+	sound_deinit();
 }
 

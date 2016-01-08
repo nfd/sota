@@ -55,3 +55,9 @@ uint8_t *read_entire_file(char *filename, ssize_t *size_out) {
 	return buf;
 }
 
+FILE *file_open(char *filename)
+{
+	// TODO in future can use fmemopen on linux and funopen on bsd.
+	return fopen(filename, "r");
+}
+

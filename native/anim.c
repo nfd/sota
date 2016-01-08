@@ -4,6 +4,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <inttypes.h>
 
 #include "anim.h"
 #include "graphics.h"
@@ -17,6 +19,9 @@ float anim_scale_x;
 float anim_scale_y;
 int anim_offset_x;
 int anim_offset_y;
+
+int anim_bitplane;
+bool anim_xor;
 
 uint8_t current_tween[MAX_TWEENED_VERTICES * 2];
 
@@ -34,6 +39,16 @@ void anim_init(int display_width, int display_height) {
 
 	anim_offset_x = (display_width / 2) - ( (ANIM_SOURCE_WIDTH * anim_scale_x) / 2);
 	anim_offset_y = display_height - (ANIM_SOURCE_HEIGHT * anim_scale_y);
+
+	anim_bitplane = 0;
+}
+
+void anim_set_bitplane(int bitplane) {
+	anim_bitplane = bitplane;
+}
+
+void anim_set_xor(bool xor) {
+	anim_xor = xor;
 }
 
 static uint8_t *anim_draw_object(uint8_t *data);
@@ -52,7 +67,7 @@ void anim_draw(struct animation *anim, int frame_idx)
 		return;
 	}
 
-	graphics_planar_clear(0);
+	graphics_planar_clear(anim_bitplane);
 
 	for(uint8_t i = 0; i < num_objects; i++) {
 		data = anim_draw_object(data);
@@ -69,7 +84,7 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 		case 0xde:
 		{
 			int num_vertices = *data++;
-			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_scale_x, anim_scale_y, anim_offset_x, anim_offset_y, 0);
+			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_scale_x, anim_scale_y, anim_offset_x, anim_offset_y, anim_bitplane, anim_xor);
 			data += (num_vertices * 2);
 			break;
 		}
@@ -90,7 +105,7 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 			uint8_t *shape = lerp_tween(tween_from, tween_to, tween_t, tween_count);
 
 			int num_vertices = *shape++;
-			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, shape, anim_scale_x, anim_scale_y, anim_offset_x, anim_offset_y, 0);
+			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, shape, anim_scale_x, anim_scale_y, anim_offset_x, anim_offset_y, anim_bitplane, anim_xor);
 			break;
 		}
 		default:

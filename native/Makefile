@@ -1,6 +1,6 @@
-OBJS=main.o graphics.o anim.o background.o files.o choreography.o
+OBJS=main.o graphics.o anim.o background.o files.o choreography.o sound.o
 
-LIBS=-lSDL2 -lm
+LIBS=-lSDL2 -lm -lmikmod -lpthread
 CFLAGS=-g -O2
 
 sota: $(OBJS)

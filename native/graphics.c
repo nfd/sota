@@ -148,7 +148,41 @@ void graphics_set_palette(size_t num_elements, uint32_t *elements) {
 	}
 }
 
-static void planar_line_horizontal(int bitplane_idx, int y, int start_x, int end_x)
+void graphics_get_palette(size_t num_elements, uint32_t *elements) {
+	num_elements = max(num_elements, 32);
+
+	memcpy(elements, palette, num_elements * sizeof(uint32_t));
+}
+
+static inline uint32_t lerp_byte(int idx, uint32_t byte_from, uint32_t byte_to, int current_step, int total_steps)
+{
+	if(current_step == 0) 
+		return byte_from;
+
+	byte_from >>= (idx * 8);
+	byte_from &= 0xff;
+
+	byte_to >>= (idx * 8);
+	byte_to &= 0xff;
+
+	int lerped = ((((int)byte_to) - ((int)byte_from)) * current_step) / total_steps;
+
+	return min(0xff, max(byte_from + lerped, 0));
+}
+
+void graphics_lerp_palette(size_t num_elements, uint32_t *from, uint32_t *to, int current_step, int total_steps) {
+	if(current_step < 0 || current_step > total_steps || num_elements > 32)
+		return;
+
+	for(int i = 0; i < num_elements; i++) {
+		palette[i] = (lerp_byte(3, from[i], to[i], current_step, total_steps) << 24)
+			| (lerp_byte(2, from[i], to[i], current_step, total_steps) << 16)
+			| (lerp_byte(1, from[i], to[i], current_step, total_steps) << 8)
+			| (lerp_byte(0, from[i], to[i], current_step, total_steps));
+	}
+}
+
+static void planar_line_horizontal(int bitplane_idx, int y, int start_x, int end_x, bool xor)
 {
 	y = min(max(y, 0), bitplane_height - 1);
 	start_x = max(min(start_x, bitplane_width - 1), 0);
@@ -162,12 +196,18 @@ static void planar_line_horizontal(int bitplane_idx, int y, int start_x, int end
 	
 	bitplane += (y * bitplane_width) + start_x;
 
-	for(int length = end_x - start_x; length; length--) {
-		*bitplane++ = pen;
+	if(xor) {
+		for(int length = end_x - start_x; length; length--) {
+			*bitplane++ ^= pen;
+		}
+	} else {
+		for(int length = end_x - start_x; length; length--) {
+			*bitplane++ = pen;
+		}
 	}
 }
 
-static void planar_line_vertical(int bitplane_idx, int x, int start_y, int end_y)
+static void planar_line_vertical(int bitplane_idx, int x, int start_y, int end_y, bool xor)
 {
 	x = min(max(x, 0), bitplane_width - 1);
 	start_y = max(min(start_y, bitplane_height - 1), 0);
@@ -181,9 +221,16 @@ static void planar_line_vertical(int bitplane_idx, int x, int start_y, int end_y
 	
 	bitplane += (start_y * bitplane_width) + x;
 
-	for(int length = end_y - start_y; length; length--) {
-		*bitplane = pen;
-		bitplane += bitplane_width;
+	if (xor) {
+		for(int length = end_y - start_y; length; length--) {
+			*bitplane ^= pen;
+			bitplane += bitplane_width;
+		}
+	} else {
+		for(int length = end_y - start_y; length; length--) {
+			*bitplane = pen;
+			bitplane += bitplane_width;
+		}
 	}
 }
 
@@ -223,7 +270,7 @@ static int active_list_comparator(const void *lhs, const void *rhs) {
 	return 0;
 }
 
-int graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *data, float scalex, float scaley, int xofs, int yofs, int bitplane_idx)
+int graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *data, float scalex, float scaley, int xofs, int yofs, int bitplane_idx, bool xor)
 {
 	/* Polygon fill algorithm */
 	// The following tutorial was most helpful:
@@ -321,7 +368,7 @@ int graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *dat
 
 			if(is_drawing) {
 				// TODO: this sometimes results in lines where prev_x = next_x - 2. Figure out why.
-				planar_line_horizontal(bitplane_idx, y + yofs, xofs + prev_x, xofs + next_x);
+				planar_line_horizontal(bitplane_idx, y + yofs, xofs + prev_x, xofs + next_x, xor);
 			}
 
 			if((!is_vertex) || (active_list[i]->ymax == y)) {
@@ -359,14 +406,14 @@ void draw_thick_circle(int xc, int yc, int radius, int thickness, int bitplane_i
     int errinner = 1 - xinner;
 
 	while(xouter >= y) {
-		planar_line_horizontal(bitplane_idx, yc + y, xc + xinner, xc + xouter);
-		planar_line_vertical(bitplane_idx, xc + y,  yc + xinner, yc + xouter);
-		planar_line_horizontal(bitplane_idx, yc + y, xc - xouter, xc - xinner);
-		planar_line_vertical(bitplane_idx, xc - y,  yc + xinner, yc + xouter);
-		planar_line_horizontal(bitplane_idx, yc - y, xc - xouter, xc - xinner);
-		planar_line_vertical(bitplane_idx, xc - y,  yc - xouter, yc - xinner);
-		planar_line_horizontal(bitplane_idx, yc - y, xc + xinner, xc + xouter);
-		planar_line_vertical(bitplane_idx, xc + y,  yc - xouter, yc - xinner);
+		planar_line_horizontal(bitplane_idx, yc + y, xc + xinner, xc + xouter, false);
+		planar_line_vertical(bitplane_idx, xc + y,  yc + xinner, yc + xouter, false);
+		planar_line_horizontal(bitplane_idx, yc + y, xc - xouter, xc - xinner, false);
+		planar_line_vertical(bitplane_idx, xc - y,  yc + xinner, yc + xouter, false);
+		planar_line_horizontal(bitplane_idx, yc - y, xc - xouter, xc - xinner, false);
+		planar_line_vertical(bitplane_idx, xc - y,  yc - xouter, yc - xinner, false);
+		planar_line_horizontal(bitplane_idx, yc - y, xc + xinner, xc + xouter, false);
+		planar_line_vertical(bitplane_idx, xc + y,  yc - xouter, yc - xinner, false);
 
 		y++;
 
