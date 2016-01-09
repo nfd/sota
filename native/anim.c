@@ -155,7 +155,7 @@ uint8_t *lerp_tween(uint8_t *tween_from, uint8_t *tween_to, int tween_t, int twe
 	return current_tween;
 }
 
-struct animation *anim_load(char *basename) {
+struct animation *anim_load(int idx_file, int data_file) {
 	static char buf[256];
 
 	struct animation *anim = malloc(sizeof(struct animation));
@@ -164,27 +164,15 @@ struct animation *anim_load(char *basename) {
 
 	anim->indices = anim->data = NULL;
 
-	if(snprintf(buf, 256, "data/%s_index.bin", basename) >= 256) {
-		anim_destroy(anim);
-		return NULL;
-	}
-
 	size_t indices_size;
-
-	anim->indices = read_entire_file(buf, &indices_size);
+	anim->indices = file_get(idx_file, &indices_size);
 	if(anim->indices == NULL) {
 		fprintf(stderr, "load fail: %s\n", buf);
 		anim_destroy(anim);
 		return NULL;
 	}
 
-	if(snprintf(buf, 256, "data/%s_anim.bin", basename) >= 256) {
-		fprintf(stderr, "load fail: %s\n", buf);
-		anim_destroy(anim);
-		return NULL;
-	}
-
-	anim->data = read_entire_file(buf, NULL);
+	anim->data = file_get(data_file, NULL);
 	if(anim->data == NULL) {
 		anim_destroy(anim);
 		return NULL;
@@ -196,12 +184,6 @@ struct animation *anim_load(char *basename) {
 }
 
 int anim_destroy(struct animation *anim) {
-	if(anim->indices)
-		free(anim->indices);
-
-	if(anim->data)
-		free(anim->data);
-
 	free(anim);
 
 	return 0;

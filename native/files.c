@@ -6,10 +6,13 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 #include "files.h"
 
-uint8_t *read_entire_file(char *filename, ssize_t *size_out) {
+uint8_t *wad;
+
+static uint8_t *read_entire_file(char *filename, ssize_t *size_out) {
 	uint8_t *buf;
 	
 	int h = open(filename, O_RDONLY);
@@ -55,9 +58,61 @@ uint8_t *read_entire_file(char *filename, ssize_t *size_out) {
 	return buf;
 }
 
-FILE *file_open(char *filename)
+struct wad_header {
+	uint32_t magic;
+	uint32_t file_count;
+	uint32_t choreography_file_idx;
+};
+
+struct wad_idx {
+	uint32_t offset;
+	uint32_t size;
+};
+
+uint8_t *file_get(int idx, ssize_t *size_out)
 {
-	// TODO in future can use fmemopen on linux and funopen on bsd.
-	return fopen(filename, "r");
+	struct wad_header *header = (struct wad_header*)wad;
+
+	if(idx >= header->file_count)
+		return NULL;
+
+	struct wad_idx *idx_array = (struct wad_idx *)(wad + sizeof(struct wad_header));
+
+	if(size_out)
+		*size_out = idx_array[idx].size;
+
+	return &wad[idx_array[idx].offset];
+}
+
+uint8_t *file_get_choreography()
+{
+	struct wad_header *header = (struct wad_header*)wad;
+	return file_get(header->choreography_file_idx, NULL);
+}
+
+FILE *file_open(int idx)
+{
+	ssize_t size;
+
+	uint8_t *data = file_get(idx, &size);
+
+	if(data == NULL) {
+		return NULL;
+	} else {
+		return fmemopen(data, size, "r");
+	}
+	// TODO can use funopen on bsd.
+}
+
+bool files_init()
+{
+	wad = read_entire_file("sota.wad", NULL);
+	return wad != NULL;
+}
+
+void files_deinit()
+{
+	if(wad)
+		free(wad);
 }
 

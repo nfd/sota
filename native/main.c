@@ -3,18 +3,22 @@
 #include <SDL2/SDL.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <stdlib.h>
 
 #include "graphics.h"
 #include "anim.h"
 #include "background.h"
 #include "choreography.h"
 #include "sound.h"
+#include "files.h"
 
 #define OPT_FULLSCREEN 1
 #define OPT_HELP 2
+#define OPT_MS 3
 
 struct option options[] = {
 	{"fullscreen", no_argument, NULL, OPT_FULLSCREEN},
+	{"ms", required_argument, NULL, OPT_MS},
 	{"help", no_argument, NULL, OPT_HELP},
 	{0, 0, 0, 0}
 };
@@ -28,6 +32,7 @@ static void help() {
 
 int main(int argc, char **argv) {
 	bool fullscreen = false;
+	int start_ms = 0;
 
 	while(true) {
 		int opt = getopt_long(argc, argv, "", options, NULL);
@@ -45,9 +50,17 @@ int main(int argc, char **argv) {
 			case OPT_HELP:
 				help();
 				return 1;
+			case OPT_MS:
+				start_ms = atoi(optarg);
+				break;
 			case -1:
 				break;
 		}
+	}
+
+	if(files_init() == false) {
+		fprintf(stderr, "couldn't read wad\n");
+		return 1;
 	}
 
 
@@ -79,7 +92,7 @@ int main(int argc, char **argv) {
 	anim_init(graphics_width(), graphics_height());
 	background_init();
 
-	choreography_run_demo(0);
+	choreography_run_demo(start_ms);
 
 #if 0
 	background_init_concentric_circles();
@@ -117,5 +130,6 @@ int main(int argc, char **argv) {
 	graphics_shutdown();
 	SDL_Quit();
 	sound_deinit();
+	files_deinit();
 }
 

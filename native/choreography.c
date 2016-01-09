@@ -57,7 +57,8 @@ struct choreography_anim {
 	uint32_t ms_per_frame;
 	uint32_t frame_from;
 	uint32_t frame_to;
-	uint32_t name;
+	uint32_t index_file;
+	uint32_t data_file;
 	uint32_t bitplane;
 	uint32_t xor;
 };
@@ -74,7 +75,6 @@ struct choreography_mod {
 };
 
 static uint8_t *choreography;
-static ssize_t choreography_size;
 static struct choreography_header *pos;
 
 /* Things which may be happening. */
@@ -102,7 +102,7 @@ static inline struct choreography_header *next_header(struct choreography_header
 
 bool choreography_init()
 {
-	choreography = read_entire_file(FILENAME, &choreography_size);
+	choreography = file_get_choreography();
 	pos = (struct choreography_header *)choreography;
 
 	state.current_animation = NULL;
@@ -145,19 +145,15 @@ static void cmd_fadeto(struct choreography_fadeto *fadeto) {
 static void cmd_anim(struct choreography_anim *anim) {
 	// Unload the current animation if it's different.
 	// TODO get rid of the mallocs and frees in this function! (And stop using the disk...)
-	if(state.current_animation_info != NULL && state.current_animation_info->name != anim->name) {
+	if(state.current_animation_info != NULL && state.current_animation_info->data_file != anim->data_file) {
 		anim_destroy(state.current_animation);
 	}
 
-	// TODO get rid of this
-	char basename[8];
-	sprintf(basename, "%06x", anim->name);
-
-	state.current_animation = anim_load(basename);
+	state.current_animation = anim_load(anim->index_file, anim->data_file);
 	state.current_animation_info = anim;
 
 	if(state.current_animation == NULL) {
-		fprintf(stderr, "Couldn't load animation %x (pos %p)\n", anim->name, (uint8_t *)anim - choreography);
+		fprintf(stderr, "Couldn't load animation %x (pos %p)\n", anim->data_file, (uint8_t *)anim - choreography);
 	}
 
 	anim_set_bitplane(anim->bitplane);
@@ -269,12 +265,28 @@ static uint64_t gettime_ms()
 	return (uint64_t)(tp.tv_sec * 1000) + (tp.tv_nsec / 1000000);
 }
 
-/* This is looking nice! */
-// TODO: include commands to switch pen between overwrite and XOR. It's important in the first sequence,
-// may already be encoded but don't care anymore. Or maybe I do. Argh.
+static void skip_to_start_ms(int ms) {
+	/* Advance our start, but apply palette changes. This is a hack. */
+	pos = (struct choreography_header *)choreography;
+	while(pos->start_ms < ms) {
+		switch(pos->cmd) {
+			case CMD_PALETTE:
+				cmd_palette((struct choreography_palette *)pos);
+				break;
+			case CMD_FADETO: {
+				struct choreography_fadeto *fadeto = (struct choreography_fadeto *)pos;
+				graphics_set_palette(fadeto->count, fadeto->values);
+				break;
+			 }
+		}
+		pos = next_header(pos);
+	}
+}
 
 void choreography_run_demo(int ms)
 {
+	skip_to_start_ms(ms);
+
 	bool keepgoing = true;
 	uint64_t starttime = gettime_ms();
 

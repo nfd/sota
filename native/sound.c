@@ -7,15 +7,17 @@
 #include "files.h"
 #include "sound.h"
 
-#define MOD_INTRO_FN "data/stateldr.mod"
-#define MOD_MAIN_FN "data/condom corruption.mod"
+static MODULE *current_mod;
+int mod_file_idx;
 
-static MODULE *mod_intro, *mod_main;
+static SAMPLE *current_sample;
+int snd_file_idx;
+
 static pthread_t audio_thread;
 
-static MODULE *load(char *filename)
+static MODULE *wz_load_mod(int idx)
 {
-	FILE *fp = file_open(filename);
+	FILE *fp = file_open(idx);
 	if(fp == NULL)
 		return NULL;
 
@@ -24,6 +26,19 @@ static MODULE *load(char *filename)
 	fclose(fp);
 
 	return mod;
+}
+
+static SAMPLE *wz_load_sample(int idx)
+{
+	FILE *fp = file_open(idx);
+	if(fp == NULL)
+		return NULL;
+
+	SAMPLE *sample = Sample_LoadFP(fp);
+
+	fclose(fp);
+
+	return sample;
 }
 
 static void *audio_thread_entry(void *arg)
@@ -49,13 +64,13 @@ bool sound_init()
 		return false;
 	}
 
-	mod_intro = load(MOD_INTRO_FN);
-	mod_main  = load(MOD_MAIN_FN);
+	current_mod  = NULL;
+	mod_file_idx = -1;
 
-	if(mod_intro == NULL || mod_main == NULL) {
-		fprintf(stderr, "sound_init: couldn't load mods\n");
-		return false;
-	}
+	current_sample = NULL;
+	snd_file_idx = -1;
+
+	//snd_heartbeat = wz_load_sample(SND_HEARTBEAT_FN);
 
 	if(pthread_create(&audio_thread, NULL, audio_thread_entry, NULL) != 0) {
 		fprintf(stderr, "sound_init: pthread_create\n");
@@ -67,11 +82,17 @@ bool sound_init()
 	return true;
 }
 
-bool sound_mod_play(int modidx)
+bool sound_mod_play(int new_mod_idx)
 {
-	MODULE *mod = modidx == MOD_INTRO ? mod_intro : mod_main;
+	if(current_mod)
+		Player_Free(current_mod);
 
-	Player_Start(mod);
+	if(new_mod_idx != mod_file_idx) {
+		current_mod = wz_load_mod(new_mod_idx);
+		mod_file_idx = new_mod_idx;
+	}
+
+	Player_Start(current_mod);
 }
 
 bool sound_mod_stop()
@@ -85,11 +106,12 @@ bool sound_deinit()
 
 	pthread_cancel(audio_thread);
 
-	// no join because detached
-//	pthread_join(audio_thread, NULL);
+	if(current_sample)
+		Sample_Free(current_sample);
 
-	Player_Free(mod_intro);
-	Player_Free(mod_main);
+	if(current_mod)
+		Player_Free(current_mod);
+
 	MikMod_Exit();
 }
 

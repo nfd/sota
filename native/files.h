@@ -1,6 +1,10 @@
-#include <stdint.h>
+#include <inttypes.h>
+#include <stdio.h>
 #include <sys/types.h>
 
-uint8_t *read_entire_file(char *filename, ssize_t *size_out);
-FILE *file_open(char *filename);
+bool files_init();
+void files_deinit();
+uint8_t *file_get(int idx, ssize_t *size_out);
+uint8_t *file_get_choreography();
+FILE *file_open(int idx);
 

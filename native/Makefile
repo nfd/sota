@@ -1,4 +1,4 @@
-OBJS=main.o graphics.o anim.o background.o files.o choreography.o sound.o
+OBJS=main.o graphics.o anim.o background.o files.o choreography.o sound.o iff.o
 
 LIBS=-lSDL2 -lm -lmikmod -lpthread
 CFLAGS=-g -O2
