@@ -1,3 +1,5 @@
+#define _XOPEN_SOURCE 700
+
 #include <inttypes.h>
 #include <sys/types.h>
 #include <sys/stat.h>

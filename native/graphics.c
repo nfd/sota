@@ -55,6 +55,10 @@ int graphics_bitplane_height() {
 	return bitplane_height;
 }
 
+int graphics_bitplane_stride() {
+	return bitplane_width;
+}
+
 void graphics_bitplane_set_offset(int bitplane_idx, int x, int y)
 {
 	int offset = (bitplane_width * y) + x;
@@ -440,6 +444,11 @@ void draw_thick_circle(int xc, int yc, int radius, int thickness, int bitplane_i
 void graphics_planar_clear(int bitplane_idx)
 {
 	memset(plane[bitplane_idx], 0, bitplane_width * bitplane_height);
+}
+
+uint8_t *graphics_bitplane_get(int idx)
+{
+	return plane[idx];
 }
 
 /* Combine bitplanes */

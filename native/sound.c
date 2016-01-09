@@ -1,3 +1,5 @@
+#define _DEFAULT_SOURCE
+
 #include <stdbool.h>
 #include <mikmod.h>
 #include <stdio.h>

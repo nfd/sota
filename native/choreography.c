@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 199309L
 #include <stdbool.h>
 #include <inttypes.h>
 #include <stddef.h>
@@ -9,6 +10,7 @@
 #include "anim.h"
 #include "background.h"
 #include "sound.h"
+#include "iff.h"
 
 #define FILENAME "data/choreography.bin"
 
@@ -19,6 +21,7 @@
 #define CMD_ANIM 4
 #define CMD_PAUSE 5
 #define CMD_MOD 6
+#define CMD_ILBM 7
 
 #define MOD_START 1
 #define MOD_STOP 2
@@ -72,6 +75,13 @@ struct choreography_mod {
 	struct choreography_header header;
 	uint32_t subcmd;
 	uint32_t arg;
+};
+
+struct choreography_ilbm {
+	struct choreography_header header;
+	uint32_t file_idx;
+	uint32_t display_type;
+	uint32_t fade_in_ms;
 };
 
 static uint8_t *choreography;
@@ -129,17 +139,22 @@ static void cmd_palette(struct choreography_palette *palette) {
 	graphics_set_palette(palette->count, palette->values);
 }
 
-static void cmd_fadeto(struct choreography_fadeto *fadeto) {
-	state.fade_start_ms = fadeto->header.start_ms;
-	state.fade_end_ms = state.fade_start_ms + fadeto->ms;
-	state.fade_count = fadeto->count;
+static void _fade_to(int start_ms, int end_ms, int count, uint32_t *palette)
+{
+	state.fade_start_ms = start_ms;
+	state.fade_end_ms = end_ms;
+	state.fade_count = count;
 
 	graphics_get_palette(32, state.fade_from);
-	memcpy(state.fade_to, fadeto->values, fadeto->count * sizeof(uint32_t));
+	memcpy(state.fade_to, palette, count * sizeof(uint32_t));
 
-	if(fadeto->count < 32) {
-		memset(&state.fade_to[fadeto->count], 0, (32 - fadeto->count) * sizeof(uint32_t));
+	if(count < 32) {
+		memset(&state.fade_to[count], 0, (32 - count) * sizeof(uint32_t));
 	}
+}
+
+static void cmd_fadeto(struct choreography_fadeto *fadeto) {
+	_fade_to(fadeto->header.start_ms, fadeto->header.start_ms + fadeto->ms, fadeto->count, fadeto->values);
 }
 
 static void cmd_anim(struct choreography_anim *anim) {
@@ -175,6 +190,22 @@ static void cmd_mod(struct choreography_mod *mod) {
 	}
 }
 
+static void cmd_ilbm(struct choreography_ilbm *ilbm) {
+	// we re-use the fade-to palette for the image palette
+	iff_display(ilbm->file_idx, ilbm->display_type, &(state.fade_count), state.fade_to);
+
+	if(ilbm->fade_in_ms == 0) {
+		graphics_set_palette(state.fade_count, state.fade_to);
+		state.fade_count = 0; 
+	} else {
+		/* lerp to palette */
+		uint16_t count;
+		uint32_t *iff_palette = iff_get_palette(ilbm->file_idx, &count);
+
+		_fade_to(ilbm->header.start_ms, ilbm->header.start_ms + ilbm->fade_in_ms, count, iff_palette);
+	}
+}
+
 // Create the state item at 'pos' without advancing it.
 static void create_state_item()
 {
@@ -199,6 +230,9 @@ static void create_state_item()
 			break;
 		case CMD_MOD:
 			cmd_mod((struct choreography_mod *)pos);
+			break;
+		case CMD_ILBM:
+			cmd_ilbm((struct choreography_ilbm *)pos);
 			break;
 		default:
 			/* This is bad */

@@ -23,7 +23,7 @@ DEMO = [
 		('after', 'mod', {'type': 'stop'}),
 
 		# Title: STATE OF THE ART, credits, dragon pic
-		#('after', 'ilbm', {'name': 'state.iff', 'display': 'fullscreen'}),
+		('after', 'ilbm', {'name': 'data/state.iff', 'display': 'fullscreen'}),
 
 		#('after', 'mod', {'type': 'start', 'name': MOD_MAIN}),
 		# First dancer
@@ -94,8 +94,18 @@ def encode_mod(wad, args):
 
 	return 0, struct.pack(ENDIAN + 'III', *packme)
 
-#def encode_ilbm(args):
-	
+def encode_ilbm(wad, args):
+	file_idx = wad.add(args['name'])
+
+	# display type: fullscreen = 0, centre = 1
+	display_type = {'fullscreen': 0, 'centre': 1}[args.get('display', 'fullscreen')]
+
+	# fade-in milliseconds 
+	# if set, fade-ins happen from the currently-set palette, i.e. the ILBM is displayed without
+	# changing the palette and a palette lerp is initiated to the ILBM colours. 
+	fade_in_ms = args.get('fadein_ms', 0)
+
+	return fade_in_ms, struct.pack(ENDIAN + 'IIII', CMD_ILBM, file_idx, display_type, fade_in_ms)
 
 def encode_demo_entry(wad, entry):
 	# return (tick count, encoded entry)
