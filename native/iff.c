@@ -146,6 +146,33 @@ static void scale_scanline(uint8_t *src, uint16_t src_w, uint8_t *dst, uint16_t 
 	}
 }
 
+static void iff_display_fullscreen(uint16_t src_w, uint16_t src_h, uint16_t dst_w, uint16_t dst_h, uint16_t dst_stride, uint16_t nPlanes, uint8_t *src, uint8_t **dst_plane, uint8_t compression)
+{
+	uint16_t row_bytes = ((src_w + 15) >> 4) << 1;
+
+	// the current scanline, per bitplane.
+	uint8_t decompressed_scanline[nPlanes][src_w];
+
+	for(int y = 0; y < src_h; y++) {
+		for(int plane = 0; plane < nPlanes; plane++) {
+			if(compression == 1) {
+				src = expand_scanline_byterun1(src, row_bytes, decompressed_scanline[plane], plane);
+			} else {
+				src = expand_scanline(src, row_bytes, decompressed_scanline[plane], plane);
+			}
+		}
+
+		for(int plane = 0; plane < nPlanes; plane++) {
+			scale_scanline(decompressed_scanline[plane], src_w, dst_plane[plane], dst_w);
+
+			//memcpy(dst_plane[plane], decompressed_scanline, src_w);
+			dst_plane[plane] += dst_stride;
+		}
+
+	}
+}
+
+
 bool iff_display(int file_idx, int display_type, uint32_t *num_colours, uint32_t *palette_out)
 {
 	/* Doesn't change palette, but will write it to palette_out if that argument is not null. */
@@ -182,46 +209,22 @@ bool iff_display(int file_idx, int display_type, uint32_t *num_colours, uint32_t
 	uint16_t src_w = be16toh(bmhd->w);
 	uint16_t src_h = be16toh(bmhd->h);
 
-	// the current scanline, after decompression (only used if compressed)
-	uint8_t decompressed_scanline[src_w];
-
 	printf("iff %d x %d\n", be16toh(bmhd->w), be16toh(bmhd->h));
+
+	// ILBMs can be 24-bit if they like!
+	uint16_t nplanes = min(bmhd->nPlanes, 5);
 
 	// destination bitplanes
 	uint8_t *dst_plane[5];
 	for(int i = 0; i < 5; i++)
 		dst_plane[i] = graphics_bitplane_get(i);
 
-	uint16_t row_bytes = ((src_w + 15) >> 4) << 1;
-
 	if(bmhd->compression == 0)
 		fprintf(stderr, "uncompressed expand untested\n");
 
-	// ILBMs can be 24-bit if they like!
-	uint16_t nplanes = min(bmhd->nPlanes, 5);
-
 	if(display_type == ILBM_FULLSCREEN) {
 		/* Stretch -- todo */
-		//printf("%p\n", body);
-		for(int y = 0; y < src_h; y++) {
-			for(int plane = 0; plane < bmhd->nPlanes; plane++) {
-				uint8_t *src_scanline;
-
-				if(bmhd->compression == 1) {
-					body = expand_scanline_byterun1(body, row_bytes, decompressed_scanline, plane);
-				} else {
-					body = expand_scanline(body, row_bytes, decompressed_scanline, plane);
-				}
-
-				scale_scanline(decompressed_scanline, src_w, dst_plane[plane], dst_w);
-
-				//memcpy(dst_plane[plane], decompressed_scanline, src_w);
-				dst_plane[plane] += dst_stride;
-			}
-
-		}
-		//printf("%p\n", body);
-
+		iff_display_fullscreen(src_w, src_h, dst_w, dst_h, dst_stride, nplanes, body, dst_plane, bmhd->compression);
 	} else {
 		/* Centre */
 	}
@@ -231,7 +234,6 @@ bool iff_display(int file_idx, int display_type, uint32_t *num_colours, uint32_t
 	uint8_t *cmap = iff_find_chunk(data, end, IFF_CMAP, &cmap_count);
 	cmap_count /= 3;
 
-	printf("%d\n", cmap_count);
 	if(num_colours)
 		*num_colours = cmap_count;
 
