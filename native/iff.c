@@ -130,9 +130,6 @@ static void scale_scanline(uint8_t *src, uint16_t src_w, uint8_t *dst, uint16_t 
 {
 	/* This is from Dr. Dobbs, http://www.drdobbs.com/image-scaling-with-bresenham/184405045#l1 */
 
-	// It causes segfaults, perhaps not directly.
-	//printf("the old scale scanline: %p %d %p %d\n", src, src_w, dst, dst_w);
-
 	int16_t num_pixels = dst_w;
 	int16_t int_part = src_w / dst_w;
 	int16_t fract_part = src_w % dst_w;
@@ -150,17 +147,13 @@ static void scale_scanline(uint8_t *src, uint16_t src_w, uint8_t *dst, uint16_t 
 	}
 }
 
-//uint8_t decompressed_scanline[4][1000];
 
 static void iff_display_fullscreen(uint16_t src_w, uint16_t src_h, uint16_t dst_w, uint16_t dst_h, uint16_t dst_stride, uint16_t nPlanes, uint8_t *src, uint8_t **dst_plane, uint8_t compression)
 {
 	uint16_t row_bytes = ((src_w + 15) >> 4) << 1;
+	uint16_t decompressed_stride = row_bytes * 8;
 
-	uint8_t *decompressed = malloc(nPlanes * src_w);
-	if(decompressed == NULL) {
-		fprintf(stderr, "couldn't allocate scratch\n");
-		return;
-	}
+	uint8_t decompressed[nPlanes * decompressed_stride];
 
 	int targetRows = dst_h;
 	int intPart = (src_h / dst_h);
@@ -180,7 +173,7 @@ static void iff_display_fullscreen(uint16_t src_w, uint16_t src_h, uint16_t dst_
 				} else {
 					src = expand_scanline(src, row_bytes, decompressed_scanline, plane);
 				}
-				decompressed_scanline += src_w;
+				decompressed_scanline += decompressed_stride;
 			}
 		}
 
@@ -190,7 +183,7 @@ static void iff_display_fullscreen(uint16_t src_w, uint16_t src_h, uint16_t dst_
 			scale_scanline(decompressed_scanline, src_w, dst_plane[plane], dst_w);
 
 			dst_plane[plane] += dst_stride;
-			decompressed_scanline += src_w;
+			decompressed_scanline += decompressed_stride;
 		}
 		src_prev_row = src_row;
 
@@ -201,8 +194,6 @@ static void iff_display_fullscreen(uint16_t src_w, uint16_t src_h, uint16_t dst_
 			src_row ++;
 		}
 	}
-
-	free(decompressed);
 }
 
 
