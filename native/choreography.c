@@ -22,6 +22,7 @@
 #define CMD_PAUSE 5
 #define CMD_MOD 6
 #define CMD_ILBM 7
+#define CMD_SOUND 8
 
 #define MOD_START 1
 #define MOD_STOP 2
@@ -82,6 +83,11 @@ struct choreography_ilbm {
 	uint32_t file_idx;
 	uint32_t display_type;
 	uint32_t fade_in_ms;
+};
+
+struct choreography_sound {
+	struct choreography_header header;
+	uint32_t file_idx;
 };
 
 static uint8_t *choreography;
@@ -198,15 +204,18 @@ static void cmd_ilbm(struct choreography_ilbm *ilbm) {
 		graphics_set_palette(state.fade_count, state.fade_to);
 		state.fade_count = 0; 
 	} else {
-		printf("todo: lerp\n");
 		/* lerp to palette */
-		/*
-		uint16_t count;
-		uint32_t *iff_palette = iff_get_palette(ilbm->file_idx, &count);
+		graphics_get_palette(32, state.fade_from);
 
-		_fade_to(ilbm->header.start_ms, ilbm->header.start_ms + ilbm->fade_in_ms, count, iff_palette);
-		*/
+		state.fade_start_ms = ilbm->header.start_ms;
+		state.fade_end_ms = ilbm->header.start_ms + ilbm->fade_in_ms;
+
+		// Everything else has been done for us above.
 	}
+}
+
+static void cmd_sound(struct choreography_sound *sound) {
+	sound_sample_play(sound->file_idx);
 }
 
 // Create the state item at 'pos' without advancing it.
@@ -236,6 +245,9 @@ static void create_state_item()
 			break;
 		case CMD_ILBM:
 			cmd_ilbm((struct choreography_ilbm *)pos);
+			break;
+		case CMD_SOUND:
+			cmd_sound((struct choreography_sound *)pos);
 			break;
 		default:
 			/* This is bad */
@@ -337,18 +349,20 @@ void choreography_run_demo(int ms)
 		create_new_state(ms);
 		run(ms);
 
-		uint64_t frame_runtime = gettime_ms() - frametime;
+		int64_t time_remaining_this_frame = MS_PER_FRAME - (gettime_ms() - frametime);
 
 		//anim_draw(anim, i);
 		//background_concentric_circles_tick(i);
 		graphics_planar_render();
 		
-		SDL_Event event;
-		if(SDL_WaitEventTimeout(&event, MS_PER_FRAME - frame_runtime) != 0) {
-			switch(event.type) {
-				case SDL_KEYUP:
-					keepgoing = false;
-					break;
+		if(time_remaining_this_frame > 0) {
+			SDL_Event event;
+			if(SDL_WaitEventTimeout(&event, time_remaining_this_frame) != 0) {
+				switch(event.type) {
+					case SDL_KEYUP:
+						keepgoing = false;
+						break;
+				}
 			}
 		}
 	}

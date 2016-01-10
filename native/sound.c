@@ -73,6 +73,9 @@ bool sound_init()
 	snd_file_idx = -1;
 
 	//snd_heartbeat = wz_load_sample(SND_HEARTBEAT_FN);
+	MikMod_SetNumVoices(-1, 1);
+
+	MikMod_EnableOutput();
 
 	if(pthread_create(&audio_thread, NULL, audio_thread_entry, NULL) != 0) {
 		fprintf(stderr, "sound_init: pthread_create\n");
@@ -86,10 +89,10 @@ bool sound_init()
 
 bool sound_mod_play(int new_mod_idx)
 {
-	if(current_mod)
-		Player_Free(current_mod);
-
 	if(new_mod_idx != mod_file_idx) {
+		if(current_mod)
+			Player_Free(current_mod);
+
 		current_mod = wz_load_mod(new_mod_idx);
 		mod_file_idx = new_mod_idx;
 	}
@@ -100,6 +103,19 @@ bool sound_mod_play(int new_mod_idx)
 bool sound_mod_stop()
 {
 	Player_Stop();
+}
+
+bool sound_sample_play(int sample_idx)
+{
+	if(snd_file_idx != sample_idx) {
+		if(current_sample)
+			Sample_Free(current_sample);
+
+		current_sample = wz_load_sample(sample_idx);
+		snd_file_idx = sample_idx;
+	}
+
+	Sample_Play(current_sample, 0, 0);
 }
 
 bool sound_deinit()

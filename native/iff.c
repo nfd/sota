@@ -62,6 +62,10 @@ static uint8_t *iff_find_chunk(uint8_t *data, uint8_t *end, uint32_t chunk_name,
 			return (uint8_t *)data32;
 		} else {
 			uint32_t chunk_size = be32toh(data32[1]);
+
+			if(chunk_size % 2 == 1)
+				chunk_size ++; // alignment
+
 			data32 = (uint32_t *) (((uint8_t *)data32) + chunk_size + 8);
 		}
 	}

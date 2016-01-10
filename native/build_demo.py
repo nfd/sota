@@ -24,6 +24,31 @@ DEMO = [
 
 		# Title: STATE OF THE ART, credits, dragon pic
 		('after', 'ilbm', {'name': 'data/state.iff', 'display': 'fullscreen'}),
+		('after', 'sound', {'name': 'data/heartbeat.wav', 'ms': 1000}),
+		('after', 'fadeto', {'ms': 250, 'values': ()}),
+
+		('after', 'ilbm', {'name': 'data/of.iff', 'display': 'fullscreen'}),
+		('after', 'sound', {'name': 'data/heartbeat.wav', 'ms': 1000}),
+		('after', 'fadeto', {'ms': 250, 'values': ()}),
+
+		('after', 'ilbm', {'name': 'data/the.iff', 'display': 'fullscreen'}),
+		('after', 'sound', {'name': 'data/heartbeat.wav', 'ms': 1000}),
+		('after', 'fadeto', {'ms': 250, 'values': ()}),
+
+		('after', 'ilbm', {'name': 'data/art.iff', 'display': 'fullscreen'}),
+		('after', 'sound', {'name': 'data/heartbeat.wav', 'ms': 1000}),
+		('after', 'fadeto', {'ms': 250, 'values': ()}),
+
+		('after', 'clear', {'plane': 'all'}),
+		('after', 'ilbm', {'name': 'data/authors.iff', 'display': 'fullscreen', 'fadein_ms': 2000}),
+		('after', 'pause', {'ms': 3000}),
+
+		('after', 'fadeto', {'ms': 250, 'values': (0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff)}),
+		('after', 'ilbm', {'name': 'data/dragon.iff', 'display': 'fullscreen', 'fadein_ms': 500}),
+		('after', 'pause', {'ms': 5000}),
+
+		# End of intro finally! fade 'er out.
+		('after', 'fadeto', {'ms': 1000, 'values': ()}),
 
 		#('after', 'mod', {'type': 'start', 'name': MOD_MAIN}),
 		# First dancer
@@ -38,6 +63,7 @@ CMD_ANIM = 4
 CMD_PAUSE = 5
 CMD_MOD = 6
 CMD_ILBM = 7
+CMD_SOUND = 8
 
 def encode_clear(wad, args):
 	plane = args.get('plane', 'all')
@@ -106,6 +132,11 @@ def encode_ilbm(wad, args):
 	fade_in_ms = args.get('fadein_ms', 0)
 
 	return fade_in_ms, struct.pack(ENDIAN + 'IIII', CMD_ILBM, file_idx, display_type, fade_in_ms)
+
+def encode_sound(wad, args):
+	file_idx = wad.add(args['name'])
+
+	return args['ms'], struct.pack(ENDIAN + 'II', CMD_SOUND, file_idx)
 
 def encode_demo_entry(wad, entry):
 	# return (tick count, encoded entry)
