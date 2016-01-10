@@ -147,13 +147,13 @@ int graphics_shutdown() {
 
 void graphics_set_palette(size_t num_elements, uint32_t *elements) {
 	memcpy(palette, elements, num_elements * sizeof(uint32_t));
-	if(num_elements < 32) {
-		memset(&palette[num_elements], 0, sizeof(uint32_t) * (32 - num_elements));
+	for(int i = num_elements; i < 32; i++) {
+		palette[i] = 0xff000000;
 	}
 }
 
 void graphics_get_palette(size_t num_elements, uint32_t *elements) {
-	num_elements = max(num_elements, 32);
+	num_elements = min(num_elements, 32);
 
 	memcpy(elements, palette, num_elements * sizeof(uint32_t));
 }

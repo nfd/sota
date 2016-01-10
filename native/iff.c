@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <endian.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "files.h"
 #include "graphics.h"
@@ -129,6 +130,9 @@ static void scale_scanline(uint8_t *src, uint16_t src_w, uint8_t *dst, uint16_t 
 {
 	/* This is from Dr. Dobbs, http://www.drdobbs.com/image-scaling-with-bresenham/184405045#l1 */
 
+	// It causes segfaults, perhaps not directly.
+	//printf("the old scale scanline: %p %d %p %d\n", src, src_w, dst, dst_w);
+
 	int16_t num_pixels = dst_w;
 	int16_t int_part = src_w / dst_w;
 	int16_t fract_part = src_w % dst_w;
@@ -146,30 +150,59 @@ static void scale_scanline(uint8_t *src, uint16_t src_w, uint8_t *dst, uint16_t 
 	}
 }
 
+//uint8_t decompressed_scanline[4][1000];
+
 static void iff_display_fullscreen(uint16_t src_w, uint16_t src_h, uint16_t dst_w, uint16_t dst_h, uint16_t dst_stride, uint16_t nPlanes, uint8_t *src, uint8_t **dst_plane, uint8_t compression)
 {
 	uint16_t row_bytes = ((src_w + 15) >> 4) << 1;
 
-	// the current scanline, per bitplane.
-	uint8_t decompressed_scanline[nPlanes][src_w];
+	uint8_t *decompressed = malloc(nPlanes * src_w);
+	if(decompressed == NULL) {
+		fprintf(stderr, "couldn't allocate scratch\n");
+		return;
+	}
 
-	for(int y = 0; y < src_h; y++) {
-		for(int plane = 0; plane < nPlanes; plane++) {
-			if(compression == 1) {
-				src = expand_scanline_byterun1(src, row_bytes, decompressed_scanline[plane], plane);
-			} else {
-				src = expand_scanline(src, row_bytes, decompressed_scanline[plane], plane);
+	int targetRows = dst_h;
+	int intPart = (src_h / dst_h);
+	int fractPart = (src_h % dst_h);
+	int e = 0;
+
+	int src_row = 0, src_prev_row = -1;
+	
+	while(targetRows-- > 0) {
+		uint8_t *decompressed_scanline = decompressed;
+
+		if(src_row != src_prev_row) {
+
+			for(int plane = 0; plane < nPlanes; plane++) {
+				if(compression == 1) {
+					src = expand_scanline_byterun1(src, row_bytes, decompressed_scanline, plane);
+				} else {
+					src = expand_scanline(src, row_bytes, decompressed_scanline, plane);
+				}
+				decompressed_scanline += src_w;
 			}
 		}
 
+		decompressed_scanline = decompressed;
 		for(int plane = 0; plane < nPlanes; plane++) {
-			scale_scanline(decompressed_scanline[plane], src_w, dst_plane[plane], dst_w);
+			//memcpy(dst_plane[plane], decompressed_scanline[plane], src_w);
+			scale_scanline(decompressed_scanline, src_w, dst_plane[plane], dst_w);
 
-			//memcpy(dst_plane[plane], decompressed_scanline, src_w);
 			dst_plane[plane] += dst_stride;
+			decompressed_scanline += src_w;
 		}
+		src_prev_row = src_row;
 
+		src_row += intPart;
+		e += fractPart;
+		if(e > dst_h) {
+			e -= dst_h;
+			src_row ++;
+		}
 	}
+
+	free(decompressed);
 }
 
 
@@ -209,7 +242,7 @@ bool iff_display(int file_idx, int display_type, uint32_t *num_colours, uint32_t
 	uint16_t src_w = be16toh(bmhd->w);
 	uint16_t src_h = be16toh(bmhd->h);
 
-	printf("iff %d x %d\n", be16toh(bmhd->w), be16toh(bmhd->h));
+	//printf("iff %d x %d\n", be16toh(bmhd->w), be16toh(bmhd->h));
 
 	// ILBMs can be 24-bit if they like!
 	uint16_t nplanes = min(bmhd->nPlanes, 5);
@@ -238,35 +271,14 @@ bool iff_display(int file_idx, int display_type, uint32_t *num_colours, uint32_t
 		*num_colours = cmap_count;
 
 	if(palette_out && cmap) {
-		for(int idx = 0; idx < cmap_count; idx++, cmap += 3) {
+		for(int idx = 0; idx < cmap_count; idx++) {
 			palette_out[idx] = 0xff000000
 				| (cmap[0] << 16)
 				| (cmap[1] << 8)
 				| (cmap[2]);
+
+			cmap += 3;
 		}
 	}
-}
-
-uint32_t *iff_get_palette(int file_idx, uint16_t *count)
-{
-	/*
-	ssize_t size;
-	uint8_t *data = file_get(file_idx, &size);
-	uint8_t *end = data + size;
-
-	uint8_t *cmap = iff_find_chunk(data, end, IFF_CMAP);
-	if(cmap == NULL) {
-		return NULL;
-	}
-
-	uint32_t
-
-	return cmap;
-	*/
-
-	// TODO: replace all this with a "load iff" thing which stores chunk body indices and sizes, OR
-	// (better) replace it with a loader which copies the palette data out on load.
-
-	return NULL;
 }
 

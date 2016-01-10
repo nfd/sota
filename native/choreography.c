@@ -198,11 +198,14 @@ static void cmd_ilbm(struct choreography_ilbm *ilbm) {
 		graphics_set_palette(state.fade_count, state.fade_to);
 		state.fade_count = 0; 
 	} else {
+		printf("todo: lerp\n");
 		/* lerp to palette */
+		/*
 		uint16_t count;
 		uint32_t *iff_palette = iff_get_palette(ilbm->file_idx, &count);
 
 		_fade_to(ilbm->header.start_ms, ilbm->header.start_ms + ilbm->fade_in_ms, count, iff_palette);
+		*/
 	}
 }
 
@@ -270,7 +273,7 @@ static void run(int ms) {
 			}
 		}
 	}
-
+	//
 	// TODO backgrounds
 
 	// palette fades

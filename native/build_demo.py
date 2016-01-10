@@ -75,7 +75,7 @@ def encode_anim(wad, args):
 	bitplane = args.get('plane', 0)
 	xor = args.get('xor', 1)
 
-	ms = ms_per_frame * (frame_to - frame_from)
+	ms = ms_per_frame * (1 + frame_to - frame_from)
 	encoded = struct.pack(ENDIAN + 'IIIIIIII', CMD_ANIM, ms_per_frame, frame_from, frame_to, idx_idx, data_idx, bitplane, xor)
 
 	return ms, encoded
