@@ -81,7 +81,9 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 		case 0xd2:
 		case 0xd3:
 		case 0xd4:
+		case 0xdd:
 		case 0xde:
+		case 0xdf:
 		{
 			int num_vertices = *data++;
 			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_scale_x, anim_scale_y, anim_offset_x, anim_offset_y, anim_bitplane, anim_xor);
@@ -93,7 +95,6 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 		case 0xe8:
 		case 0xf2:
 		{
-			int bitplane_idx = 0; //cmd == 0xe6? 0: 2;
 			uint8_t *tween_from = data;
 			uint8_t *tween_to   = data;
 
@@ -118,13 +119,8 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 uint8_t *lerp_tween(uint8_t *tween_from, uint8_t *tween_to, int tween_t, int tween_count)
 {
 	// We expect these to be draw commands (i.e. 0xd2) followed by lengths.
-	if(*tween_from++ & 0xd0 != 0xd0) {
-		fprintf(stderr, "Unexpected tween idx (from)");
-	}
-
-	if(*tween_to++ & 0xd0 != 0xd0) {
-		fprintf(stderr, "Unexpected tween idx (to)");
-	}
+	tween_from++; // skip command
+	tween_to++; 
 
 	int tween_from_length = *tween_from++;
 	int tween_to_length   = *tween_to++;
@@ -164,7 +160,7 @@ struct animation *anim_load(int idx_file, int data_file) {
 
 	anim->indices = anim->data = NULL;
 
-	size_t indices_size;
+	ssize_t indices_size;
 	anim->indices = file_get(idx_file, &indices_size);
 	if(anim->indices == NULL) {
 		fprintf(stderr, "load fail: %s\n", buf);
