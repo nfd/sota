@@ -98,11 +98,13 @@ bool sound_mod_play(int new_mod_idx)
 	}
 
 	Player_Start(current_mod);
+	return true;
 }
 
 bool sound_mod_stop()
 {
 	Player_Stop();
+	return true;
 }
 
 bool sound_sample_play(int sample_idx)
@@ -116,6 +118,7 @@ bool sound_sample_play(int sample_idx)
 	}
 
 	Sample_Play(current_sample, 0, 0);
+	return true;
 }
 
 bool sound_deinit()
@@ -131,5 +134,6 @@ bool sound_deinit()
 		Player_Free(current_mod);
 
 	MikMod_Exit();
+	return true;
 }
 
