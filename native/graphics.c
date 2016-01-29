@@ -77,21 +77,20 @@ int graphics_init(bool fullscreen) {
 	if(fullscreen) {
 		window = SDL_CreateWindow("State Of The Art", 0, 0, currentMode.w, currentMode.h, SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_OPENGL);
 	} else {
-		window = SDL_CreateWindow("State Of The Art", 0, 0, 640, 480, SDL_WINDOW_OPENGL);
+		window = SDL_CreateWindow("State Of The Art", 0, 0, 640, 512, SDL_WINDOW_OPENGL);
 	}
 	if(window == NULL) {
 		fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
 		return -1;
 	}
 
+	SDL_GetWindowSize(window, &window_width, &window_height);
+
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 	if(renderer == NULL) {
 		fprintf(stderr, "SDL_CreateRenderer: %s\n", SDL_GetError());
 		return -1;
 	}
-
-	window_width = currentMode.w;
-	window_height = currentMode.h;
 
 	texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, window_width, window_height);
 	if(texture == NULL) {
@@ -274,7 +273,7 @@ static int active_list_comparator(const void *lhs, const void *rhs) {
 	return 0;
 }
 
-int graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *data, float scalex, float scaley, int xofs, int yofs, int bitplane_idx, bool xor)
+void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *data, float scalex, float scaley, int xofs, int yofs, int bitplane_idx, bool xor)
 {
 	/* Polygon fill algorithm */
 	// The following tutorial was most helpful:
@@ -446,8 +445,18 @@ void graphics_planar_clear(int bitplane_idx)
 	memset(plane[bitplane_idx], 0, bitplane_width * bitplane_height);
 }
 
+void graphics_clear_visible()
+{
+	for(int plane_idx = 0; plane_idx < 5; plane_idx++) {
+		for(int y = 0; y < window_height; y++) {
+			memset(plane[plane_idx] + (y * bitplane_width), 0, window_width);
+		}
+	}
+}
+
 uint8_t *graphics_bitplane_get(int idx)
 {
+	// NB returns the bitplane sans offset.
 	return plane[idx];
 }
 
@@ -459,12 +468,18 @@ void graphics_planar_render()
 	uint8_t *plane_idx_1 = plane[1] + plane_offset[1];
 	uint8_t *plane_idx_2 = plane[2] + plane_offset[2];
 	uint8_t *plane_idx_3 = plane[3] + plane_offset[3];
+	uint8_t *plane_idx_4 = plane[4] + plane_offset[4];
 
 	int fb_idx = 0;
 
 	for(int y = 0; y < window_height; y++) {
 		for(int x = 0; x < window_width; x++) {
-			uint8_t colour = *(plane_idx_0 + x) | *(plane_idx_1 + x) | *(plane_idx_2 + x) | *(plane_idx_3 + x);
+			// TODO this is pretty horrible, should go planar.
+			uint8_t colour = (*(plane_idx_0 + x) ? 1 : 0)|
+				(*(plane_idx_1 + x) ? 2 : 0) |
+				(*(plane_idx_2 + x) ? 4 : 0) |
+				(*(plane_idx_3 + x) ? 8 : 0) |
+				(*(plane_idx_4 + x) ? 16: 0);
 			framebuffer[fb_idx + x] = palette[colour];
 		}
 
@@ -472,11 +487,37 @@ void graphics_planar_render()
 		plane_idx_1 += bitplane_width;
 		plane_idx_2 += bitplane_width;
 		plane_idx_3 += bitplane_width;
+		plane_idx_4 += bitplane_width;
 		fb_idx += window_width;
 	}
 
 	SDL_UpdateTexture(texture, NULL, framebuffer, window_width * 4);
 	SDL_RenderCopy(renderer, texture, NULL, NULL);
 	SDL_RenderPresent(renderer);
+}
+
+void graphics_bitplane_blit(int plane_from, int plane_to, int sx, int sy, int w, int h, int dx, int dy)
+{
+	int src_offset = (bitplane_width * sy) + sx;
+	int dst_offset = (bitplane_width * dy) + dx;
+
+	uint8_t *src = plane[plane_from] + src_offset;
+	uint8_t *dst = plane[plane_to]   + dst_offset;
+
+	for(int y = 0; y < h; y++) {
+		memcpy(dst, src, w);
+		src += bitplane_width;
+		dst += bitplane_width;
+	}
+}
+
+void graphics_blit(int mask, int sx, int sy, int w, int h, int dx, int dy)
+{
+	/* copy all planes in 'mask' */
+	for(int plane_idx = 0; plane_idx < 5; plane_idx++) {
+		if((mask & (1 << plane_idx)) != 0) {
+			graphics_bitplane_blit(plane_idx, plane_idx, sx, sy, w, h, dx, dy);
+		}
+	}
 }
 
