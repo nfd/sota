@@ -11,6 +11,7 @@
 #include "choreography.h"
 #include "sound.h"
 #include "files.h"
+#include "font.h"
 
 #define OPT_FULLSCREEN 1
 #define OPT_HELP 2
@@ -60,6 +61,11 @@ int main(int argc, char **argv) {
 
 	if(files_init() == false) {
 		fprintf(stderr, "couldn't read wad\n");
+		return 1;
+	}
+
+	if(font_init() == false) {
+		fprintf(stderr, "couldn't init fonts\n");
 		return 1;
 	}
 
