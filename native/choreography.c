@@ -11,6 +11,7 @@
 #include "background.h"
 #include "sound.h"
 #include "iff.h"
+#include "font.h"
 
 #define FILENAME "data/choreography.bin"
 
@@ -23,9 +24,21 @@
 #define CMD_MOD 6
 #define CMD_ILBM 7
 #define CMD_SOUND 8
+#define CMD_STARTEFFECT 9
+#define CMD_LOADFONT 10
+#define CMD_ALTERNATE_PALETTE 11
+#define CMD_USE_ALTERNATE_PALETTE 12
 
 #define MOD_START 1
 #define MOD_STOP 2
+
+#define EFFECT_NOTHING 0
+#define EFFECT_SPOTLIGHTS 1
+#define EFFECT_VOTEVOTEVOTE 2
+#define EFFECT_DELAYEDBLIT 3
+
+#define ILBM_FULLSCREEN 0
+#define ILBM_CENTRE 1
 
 /* Frame rate the demo runs at. This doesn't affect the speed of the animations, 
  * which run at 25 fps */
@@ -46,6 +59,17 @@ struct choreography_palette {
 	struct choreography_header header;
 	uint32_t count;
 	uint32_t values[32];
+};
+
+struct choreography_alternate_palette {
+	struct choreography_header header;
+	uint32_t alternate_idx;
+	uint32_t values[32];
+};
+
+struct choreography_use_alternate_palette {
+	struct choreography_header header;
+	uint32_t alternate_idx;
 };
 
 struct choreography_fadeto {
@@ -90,6 +114,20 @@ struct choreography_sound {
 	uint32_t file_idx;
 };
 
+struct choreography_starteffect {
+	struct choreography_header header;
+	uint32_t effect_num;
+	uint8_t effect_data[];
+};
+
+struct choreography_loadfont {
+	struct choreography_header header;
+	uint32_t file_idx;
+	uint32_t startchar;
+	uint32_t numchars;
+	uint16_t positions[];
+};
+
 static uint8_t *choreography;
 static struct choreography_header *pos;
 
@@ -109,6 +147,10 @@ static struct {
 
 	// pausing
 	int pause_end_ms;
+
+	// effects
+	void (*effect_tick)(int ms);
+	void (*effect_deinit)();
 } state;
 
 static inline struct choreography_header *next_header(struct choreography_header *current_header)
@@ -127,13 +169,15 @@ bool choreography_init()
 
 	state.pause_end_ms = 0;
 
+	state.effect_deinit = state.effect_tick = NULL;
+
 	return choreography != NULL;
 }
 
 static void cmd_clear(struct choreography_clear *clear)
 {
 	if(clear->plane == 0xff) {
-		for(int i = 0; i < 4; i++) {
+		for(int i = 0; i < 5; i++) {
 			graphics_planar_clear(i);
 		}
 	} else {
@@ -143,6 +187,22 @@ static void cmd_clear(struct choreography_clear *clear)
 
 static void cmd_palette(struct choreography_palette *palette) {
 	graphics_set_palette(palette->count, palette->values);
+}
+
+static void cmd_alternate_palette(struct choreography_alternate_palette *alternate) {
+	/* Store the palette in "fade_to" */
+	int i;
+	uint32_t *dest = alternate->alternate_idx == 0 ? state.fade_from : state.fade_to;
+
+	for(i = 0; i < 32; i++) {
+		dest[i] = alternate->values[i];
+	}
+}
+
+static void cmd_use_alternate_palette(struct choreography_use_alternate_palette *alternate) {
+	uint32_t *src = alternate->alternate_idx == 0 ? state.fade_from : state.fade_to;
+
+	graphics_set_palette(32, src);
 }
 
 static void _fade_to(int start_ms, int end_ms, int count, uint32_t *palette)
@@ -174,7 +234,7 @@ static void cmd_anim(struct choreography_anim *anim) {
 	state.current_animation_info = anim;
 
 	if(state.current_animation == NULL) {
-		fprintf(stderr, "Couldn't load animation %x (pos %p)\n", anim->data_file, (uint8_t *)anim - choreography);
+		fprintf(stderr, "Couldn't load animation %x\n", anim->data_file);
 	}
 
 	anim_set_bitplane(anim->bitplane);
@@ -198,7 +258,8 @@ static void cmd_mod(struct choreography_mod *mod) {
 
 static void cmd_ilbm(struct choreography_ilbm *ilbm) {
 	// we re-use the fade-to palette for the image palette
-	iff_display(ilbm->file_idx, ilbm->display_type, &(state.fade_count), state.fade_to);
+	// TODO display_type is ignored
+	iff_display(ilbm->file_idx, 0, 0, graphics_width(), graphics_height(), &(state.fade_count), state.fade_to);
 
 	if(ilbm->fade_in_ms == 0) {
 		graphics_set_palette(state.fade_count, state.fade_to);
@@ -218,8 +279,42 @@ static void cmd_sound(struct choreography_sound *sound) {
 	sound_sample_play(sound->file_idx);
 }
 
+static void cmd_starteffect(int ms, struct choreography_starteffect *effect) {
+	//state->current_effect = effect->effect_num;
+
+	if(state.effect_deinit) {
+		state.effect_deinit();
+	}
+
+	switch(effect->effect_num) {
+		case EFFECT_SPOTLIGHTS:
+			background_init_spotlights();
+			state.effect_tick = background_spotlights_tick;
+			state.effect_deinit = background_deinit_spotlights;
+			break;
+		case EFFECT_VOTEVOTEVOTE:
+			background_init_votevotevote(effect->effect_data, state.fade_from, state.fade_to);
+			state.effect_tick = background_votevotevote_tick;
+			state.effect_deinit = background_deinit_votevotevote;
+			break;
+		case EFFECT_DELAYEDBLIT:
+			background_init_delayedblit();
+			state.effect_tick = background_delayedblit_tick;
+			state.effect_deinit = background_deinit_delayedblit;
+			break;
+		case EFFECT_NOTHING:
+		default:
+			state.effect_tick = state.effect_deinit = NULL;
+			break;
+	}
+}
+
+static void cmd_loadfont(int ms, struct choreography_loadfont *loadfont) {
+	font_load(loadfont->file_idx, loadfont->startchar, loadfont->numchars, loadfont->positions);
+}
+
 // Create the state item at 'pos' without advancing it.
-static void create_state_item()
+static void create_state_item(int ms, struct choreography_header *pos)
 {
 	switch(pos->cmd) {
 		case CMD_END:
@@ -230,6 +325,12 @@ static void create_state_item()
 			break;
 		case CMD_PALETTE:
 			cmd_palette((struct choreography_palette *)pos);
+			break;
+		case CMD_ALTERNATE_PALETTE:
+			cmd_alternate_palette((struct choreography_alternate_palette *)pos);
+			break;
+		case CMD_USE_ALTERNATE_PALETTE:
+			cmd_use_alternate_palette((struct choreography_use_alternate_palette *)pos);
 			break;
 		case CMD_FADETO:
 			cmd_fadeto((struct choreography_fadeto *)pos);
@@ -249,6 +350,12 @@ static void create_state_item()
 		case CMD_SOUND:
 			cmd_sound((struct choreography_sound *)pos);
 			break;
+		case CMD_STARTEFFECT:
+			cmd_starteffect(ms, (struct choreography_starteffect *)pos);
+			break;
+		case CMD_LOADFONT:
+			cmd_loadfont(ms, (struct choreography_loadfont *)pos);
+			break;
 		default:
 			/* This is bad */
 			fprintf(stderr, "Unknown choreography command %x\n", pos->cmd);
@@ -260,7 +367,7 @@ static void create_new_state(int ms)
 {
 	/* Create the state */
 	while(pos->start_ms <= ms && pos->cmd != CMD_END) {
-		create_state_item(pos);
+		create_state_item(ms, pos);
 		pos = next_header(pos);
 	}
 }
@@ -285,8 +392,11 @@ static void run(int ms) {
 			}
 		}
 	}
-	//
-	// TODO backgrounds
+
+	// Backgrounds.
+	if(state.effect_tick) {
+		state.effect_tick(ms);
+	}
 
 	// palette fades
 	if(state.fade_count != 0) {
