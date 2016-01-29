@@ -10,9 +10,7 @@
 
 #include "files.h"
 #include "graphics.h"
-
-#define ILBM_FULLSCREEN 0
-#define ILBM_CENTRE 1
+#include "iff.h"
 
 #define IFF_FORM 0x464f524d  /* "FORM" */
 #define IFF_ILBM 0x494c424d  /* "ILBM" */
@@ -40,14 +38,14 @@ static uint8_t *iff_find_chunk(uint8_t *data, uint8_t *end, uint32_t chunk_name,
 	chunk_name = htobe32(chunk_name);
 
 	if(be32toh(*data32) != IFF_FORM) {
-		fprintf(stderr, "iff_find_chunk: FORM\n", NULL);
+		fprintf(stderr, "iff_find_chunk: FORM\n");
 		return NULL;
 	}
 
 	data32 += 2;
 
 	if(be32toh(*data32) != IFF_ILBM) {
-		fprintf(stderr, "iff_find_chunk: ILBM\n", NULL);
+		fprintf(stderr, "iff_find_chunk: ILBM\n");
 		return NULL;
 	}
 
@@ -73,7 +71,7 @@ static uint8_t *iff_find_chunk(uint8_t *data, uint8_t *end, uint32_t chunk_name,
 	return NULL;
 }
 
-static inline void expand_one(uint8_t src, uint8_t *dst, uint8_t pen)
+static inline void expand_one(int8_t src, int8_t *dst, uint8_t pen)
 {
 	dst[0] = src & 0x80 ? pen : 0;
 	dst[1] = src & 0x40 ? pen : 0;
@@ -85,7 +83,7 @@ static inline void expand_one(uint8_t src, uint8_t *dst, uint8_t pen)
 	dst[7] = src & 0x01 ? pen : 0;
 }
 
-static uint8_t *expand_scanline_byterun1(int8_t *src, uint16_t wanted, uint8_t *dst, int8_t plane)
+static int8_t *expand_scanline_byterun1(int8_t *src, uint16_t wanted, int8_t *dst, int8_t plane)
 {
 	uint8_t pen = 1 << plane;
 
@@ -118,7 +116,7 @@ static uint8_t *expand_scanline_byterun1(int8_t *src, uint16_t wanted, uint8_t *
 	return src;
 }
 
-static uint8_t *expand_scanline(uint8_t *src, uint16_t wanted, uint8_t *dst, int8_t plane)
+static int8_t *expand_scanline(int8_t *src, uint16_t wanted, int8_t *dst, int8_t plane)
 {
 	// This is untested
 	uint8_t pen = 1 << plane;
@@ -130,7 +128,7 @@ static uint8_t *expand_scanline(uint8_t *src, uint16_t wanted, uint8_t *dst, int
 	return src;
 }
 
-static void scale_scanline(uint8_t *src, uint16_t src_w, uint8_t *dst, uint16_t dst_w)
+static void scale_scanline(int8_t *src, uint16_t src_w, uint8_t *dst, uint16_t dst_w)
 {
 	/* This is from Dr. Dobbs, http://www.drdobbs.com/image-scaling-with-bresenham/184405045#l1 */
 
@@ -152,12 +150,12 @@ static void scale_scanline(uint8_t *src, uint16_t src_w, uint8_t *dst, uint16_t 
 }
 
 
-static void iff_display_fullscreen(uint16_t src_w, uint16_t src_h, uint16_t dst_w, uint16_t dst_h, uint16_t dst_stride, uint16_t nPlanes, uint8_t *src, uint8_t **dst_plane, uint8_t compression)
+static void iff_stretch(uint16_t src_w, uint16_t src_h, uint16_t dst_w, uint16_t dst_h, uint16_t dst_stride, uint16_t nPlanes, int8_t *src, uint8_t **dst_plane, uint8_t compression)
 {
 	uint16_t row_bytes = ((src_w + 15) >> 4) << 1;
 	uint16_t decompressed_stride = row_bytes * 8;
 
-	uint8_t decompressed[nPlanes * decompressed_stride];
+	int8_t decompressed[nPlanes * decompressed_stride];
 
 	int targetRows = dst_h;
 	int intPart = (src_h / dst_h);
@@ -167,7 +165,7 @@ static void iff_display_fullscreen(uint16_t src_w, uint16_t src_h, uint16_t dst_
 	int src_row = 0, src_prev_row = -1;
 	
 	while(targetRows-- > 0) {
-		uint8_t *decompressed_scanline = decompressed;
+		int8_t *decompressed_scanline = decompressed;
 
 		if(src_row != src_prev_row) {
 
@@ -201,7 +199,7 @@ static void iff_display_fullscreen(uint16_t src_w, uint16_t src_h, uint16_t dst_
 }
 
 
-bool iff_display(int file_idx, int display_type, uint32_t *num_colours, uint32_t *palette_out)
+bool iff_display(int file_idx, int dst_x, int dst_y, int dst_w, int dst_h, uint32_t *num_colours, uint32_t *palette_out)
 {
 	/* Doesn't change palette, but will write it to palette_out if that argument is not null. */
 
@@ -231,8 +229,8 @@ bool iff_display(int file_idx, int display_type, uint32_t *num_colours, uint32_t
 		return false;
 	}
 
-	uint16_t dst_w = graphics_width();
-	uint16_t dst_h = graphics_height();
+	//uint16_t dst_w = graphics_width();
+	//uint16_t dst_h = graphics_height();
 	uint16_t dst_stride = graphics_bitplane_stride();
 	uint16_t src_w = be16toh(bmhd->w);
 	uint16_t src_h = be16toh(bmhd->h);
@@ -243,19 +241,15 @@ bool iff_display(int file_idx, int display_type, uint32_t *num_colours, uint32_t
 	uint16_t nplanes = min(bmhd->nPlanes, 5);
 
 	// destination bitplanes
+	uint32_t plane_offset = (dst_y * dst_stride) + dst_x;
 	uint8_t *dst_plane[5];
 	for(int i = 0; i < 5; i++)
-		dst_plane[i] = graphics_bitplane_get(i);
+		dst_plane[i] = graphics_bitplane_get(i) + plane_offset;
 
 	if(bmhd->compression == 0)
 		fprintf(stderr, "uncompressed expand untested\n");
 
-	if(display_type == ILBM_FULLSCREEN) {
-		/* Stretch -- todo */
-		iff_display_fullscreen(src_w, src_h, dst_w, dst_h, dst_stride, nplanes, body, dst_plane, bmhd->compression);
-	} else {
-		/* Centre */
-	}
+	iff_stretch(src_w, src_h, dst_w, dst_h, dst_stride, nplanes, (int8_t *)body, dst_plane, bmhd->compression);
 
 	/* Copy the palette if requested */
 	uint32_t cmap_count;
@@ -275,5 +269,6 @@ bool iff_display(int file_idx, int display_type, uint32_t *num_colours, uint32_t
 			cmap += 3;
 		}
 	}
+	return true;
 }
 
