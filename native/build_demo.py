@@ -1,5 +1,9 @@
 # Generate the `sotasequence.c` file used by the choreographer.
 import struct
+import urllib.request
+import urllib.parse
+import os
+import gzip
 
 from wad import Wad
 
@@ -156,6 +160,35 @@ CMD_LOADFONT = 10
 CMD_ALTERNATE_PALETTE = 11
 CMD_USE_ALTERNATE_PALETTE = 12
 
+NET_USE_OK = False
+MAX_FILE_LENGTH = 1024 * 1024
+
+URL_BASE = "http://lardcave.net/sota/"
+
+def get_file(local_filename):
+	global NET_USE_OK
+
+	if os.path.exists(local_filename):
+		return
+
+	url = URL_BASE + urllib.parse.quote(local_filename + ".gz")
+
+	if NET_USE_OK is False:
+		print("%s not present. Press enter to download it (and any other required files) from %s" % (local_filename, url))
+		input()
+
+	NET_USE_OK = True
+
+	print("Downloading %s" % (url))
+	with urllib.request.urlopen(url) as h:
+		result = h.read(MAX_FILE_LENGTH)
+
+	if not os.path.exists('data'):
+		os.mkdir('data')
+
+	with open(local_filename, 'wb') as h:
+		h.write(gzip.decompress(result))
+
 def encode_clear(wad, args):
 	plane = args.get('plane', 'all')
 	if plane == 'all':
@@ -193,9 +226,11 @@ def encode_fadeto(wad, args):
 
 def encode_anim(wad, args):
 	idx_fn = 'data/%06x_index.bin' % (args['name'])
+	get_file(idx_fn)
 	idx_idx = wad.add(idx_fn)
 
 	data_fn = 'data/%06x_anim.bin' % (args['name'])
+	get_file(data_fn)
 	data_idx = wad.add(data_fn)
 
 	frame_from = args['from']
@@ -217,6 +252,7 @@ def encode_pause(wad, args):
 
 def encode_mod(wad, args):
 	if args['type'] == 'start':
+		get_file(args['name'])
 		packme = (CMD_MOD, 1, wad.add(args['name']))
 	elif args['type'] == 'stop':
 		packme = (CMD_MOD, 2, 0)
@@ -224,6 +260,7 @@ def encode_mod(wad, args):
 	return 0, struct.pack(ENDIAN + 'III', *packme)
 
 def encode_ilbm(wad, args):
+	get_file(args['name'])
 	file_idx = wad.add(args['name'])
 
 	# display type: fullscreen = 0, centre = 1
@@ -237,6 +274,7 @@ def encode_ilbm(wad, args):
 	return fade_in_ms, struct.pack(ENDIAN + 'IIII', CMD_ILBM, file_idx, display_type, fade_in_ms)
 
 def encode_sound(wad, args):
+	get_file(args['name'])
 	file_idx = wad.add(args['name'])
 
 	return args['ms'], struct.pack(ENDIAN + 'II', CMD_SOUND, file_idx)
@@ -287,6 +325,7 @@ def encode_starteffect(wad, args):
 	return 0, struct.pack(ENDIAN + 'II', CMD_STARTEFFECT, effect_num) + packed_text
 
 def encode_loadfont(wad, args):
+	get_file(args['name'])
 	file_idx = wad.add(args['name'])
 	startchar = ord(args['startchar'])
 	numchars = len(args['map']) // 4
