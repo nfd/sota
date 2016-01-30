@@ -6,6 +6,10 @@ CFLAGS=-g -O2 -std=c99 -Wall -Werror -fsanitize=address
 sota: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $+ $(LIBS)
 
+.PHONY: data
+data:
+	python3 build_demo.py
+
 .PHONY: clean
 clean:
 	rm -f *.o sota
