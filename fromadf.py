@@ -2,6 +2,8 @@ import json
 import sys
 import os
 import struct
+import urllib.request
+import gzip
 
 OUTPUT_DIR_JSON='shapes'
 OUTPUT_DIR_BINARY='native/data'
@@ -177,7 +179,6 @@ class ShapeMaker:
 				data.extend(list(self.handle.read(6)))
 			elif cmd_minor == 0xf2:
 				unknown = list(self.handle.read(6))
-				print(unknown)
 				data.extend(unknown)
 			else:
 				print("Unknown cmd %02x @%06x" % (cmd_minor, self.handle.tell() - 1))
@@ -223,5 +224,24 @@ def write_all_animations():
 	with open(os.path.join(OUTPUT_DIR_JSON, 'scripts.json'), 'w') as h:
 		json.dump(filenames, h)
 
+URL = "http://lardcave.net/sota/Spaceballs-StateOfTheArt.adf.gz"
+MAX_LENGTH = 880 * 1024
+
+def retrieve_disk_image():
+	if os.path.exists(path):
+		return
+	
+	print("%s not present. Press enter to download it from %s" % (path, URL))
+	input()
+
+	print("Downloading...")
+	with urllib.request.urlopen(URL) as h:
+		result = h.read(MAX_LENGTH)
+
+	print("Decrunching...")
+	with open(path, 'wb') as h:
+		h.write(gzip.decompress(result))
+
+retrieve_disk_image()
 write_all_animations()
 
