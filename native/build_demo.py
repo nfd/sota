@@ -113,35 +113,74 @@ DEMO = [
 		('after', 'starteffect', {'name': 'nothing'}),
 		('after', 'clear', {'plane': 'all'}),
 
-		# Second set of dancers.
-		# Orange-brown dancer on white
+		# Second set of dancers. Fast cuts (1 second per shot) of two separate dancers, 
+		# one with orange-brown trails and one with white-blue trails.
+		# Palette 0: Orange-brown dancer on white
 		('after', 'alternate_palette', {'idx': 0, 'values': (
 			0xffffffff, 0xffcc7733, 0xffdd7733, 0xffaa3311, 0xffdd8844, 0xffaa3311, 0xffaa4422, 0xff661100,
 			0xffee9944, 0xffaa3311, 0xffaa3311, 0xffaa3311, 0xffbb4422, 0xffaa3311, 0xff771100, 0xff440000,
 			0xffffaa55, 0xffcc6633, 0xffaa3311, 0xff992211, 0xffaa3311, 0xffaa3311, 0xffaa3311, 0xff661100,
 			0xffbb6622, 0xff881100, 0xffaa3311, 0xff550000, 0xff771100, 0xff550000, 0xff440000, 0xff330000)}),
-		# Blue-white dancer on black.
+		# Palette 1: Blue-white dancer on black.
 		('after', 'alternate_palette', {'idx': 1, 'values': (
 			0xff000000, 0xff3388cc, 0xff2288cc, 0xff55ccee, 0xff2277bb, 0xff55ccee, 0xff55bbdd, 0xff99eeff,
 			0xff1166bb, 0xff55ccee, 0xff55ccee, 0xff55ccee, 0xff44bbdd, 0xff55ccee, 0xff88eeff, 0xffbbffff,
 			0xff0055aa, 0xff3399cc, 0xff55ccee, 0xff66ddee, 0xff55ccee, 0xff55ccee, 0xff55ccee, 0xff99eeff,
 			0xff44aadd, 0xff77eeff, 0xff55ccee, 0xffaaffff, 0xff88eeff, 0xffaaffff, 0xffbbffff, 0xffccffff)}),
-		('after', 'use_alternate_palette', {'idx': 0}),
+		# Effect for this scene is a trail of onionskinned previous frames
 		('after', 'starteffect', {'name': 'delayedblit'}),
-		('after', 'anim', {'name': 0x75c66, 'from': 0, 'to': 21, 'msperframe': 80}),
-		('after', 'clear', {'plane': 'all'}),
-		('after', 'use_alternate_palette', {'idx': 1}),
-		('after', 'anim', {'name': 0x77016, 'from': 0, 'to': 21, 'msperframe': 80}),
-		('after', 'clear', {'plane': 'all'}),
+		# 1
 		('after', 'use_alternate_palette', {'idx': 0}),
-		('after', 'anim', {'name': 0x75c66, 'from': 21, 'to': 42, 'msperframe': 80}),
+		('after', 'anim', {'name': 0x75c66, 'from': 0, 'to': 21}),
 		('after', 'clear', {'plane': 'all'}),
+		#2
 		('after', 'use_alternate_palette', {'idx': 1}),
-		('after', 'anim', {'name': 0x77016, 'from': 21, 'to': 42, 'msperframe': 80}),
+		('after', 'anim', {'name': 0x77016, 'from': 0, 'to': 21}),
 		('after', 'clear', {'plane': 'all'}),
+		#3
 		('after', 'use_alternate_palette', {'idx': 0}),
-		#('after', 'anim', {'name': 0x75c66, 'from': 42, 'to': 63, 'msperframe': 80}),
-		('after', 'anim', {'name': 0x7789e, 'from': 0, 'to': 21, 'msperframe': 80}),
+		('after', 'anim', {'name': 0x75c66, 'from': 21, 'to': 42}),
+		('after', 'clear', {'plane': 'all'}),
+		#4: TODO CROP
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'anim', {'name': 0x77016, 'from': 21, 'to': 42}),
+		('after', 'clear', {'plane': 'all'}),
+		#5
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'anim', {'name': 0x78104, 'from': 0, 'to': 21}),
+		('after', 'clear', {'plane': 'all'}),
+		#6
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'anim', {'name': 0x77016, 'from': 0, 'to': 21}),
+		('after', 'clear', {'plane': 'all'}),
+		#7
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'anim', {'name': 0x75c66, 'from': 0, 'to': 21}),
+		('after', 'clear', {'plane': 'all'}),
+		#8
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'anim', {'name': 0x7789e, 'from': 0, 'to': 21}),
+		('after', 'clear', {'plane': 'all'}),
+		#9
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'anim', {'name': 0x77016, 'from': 16, 'to': 36}),
+		('after', 'clear', {'plane': 'all'}),
+		#10
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'anim', {'name': 0x78104, 'from': 0, 'to': 21}),
+		('after', 'clear', {'plane': 'all'}),
+		#11
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'anim', {'name': 0x77016, 'from': 0, 'to': 21}),
+		('after', 'clear', {'plane': 'all'}),
+		#12
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'anim', {'name': 0x7789e, 'from': 10, 'to': 30}),
+		('after', 'clear', {'plane': 'all'}),
+		#13
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'anim', {'name': 0x77016, 'from': 20, 'to': 30}),
+		('after', 'clear', {'plane': 'all'}),
 
 		('after', 'end', {}),
 ]
