@@ -113,8 +113,8 @@ void background_votevotevote_tick(int ms)
 		return;
 
 	int top_text_idx = random() % votevotevote_topline_count;
-	int mid_text_idx = (random() % votevotevote_midline_count);
-	int bot_text_idx = (random() % votevotevote_botline_count);
+	int mid_text_idx = random() % votevotevote_midline_count;
+	int bot_text_idx = random() % votevotevote_botline_count;
 
 	// ensure we don't pick the same thing twice.
 	if(top_text_idx == votevotevote_top) 
@@ -125,9 +125,6 @@ void background_votevotevote_tick(int ms)
 
 	if(bot_text_idx == votevotevote_bot) 
 		bot_text_idx = (bot_text_idx + 1) % votevotevote_botline_count;
-
-	mid_text_idx += votevotevote_topline_count;
-	bot_text_idx += votevotevote_topline_count + votevotevote_midline_count;
 
 	int font_height = font_get_height();
 	int text_length;
@@ -149,12 +146,12 @@ void background_votevotevote_tick(int ms)
 
 	y += font_height;
 
-	text = find_text_for_idx(mid_text_idx, &text_length);
+	text = find_text_for_idx(mid_text_idx + votevotevote_topline_count, &text_length);
 	font_centre(text_length, text, y);
 
 	y += font_height;
 
-	text = find_text_for_idx(bot_text_idx, &text_length);
+	text = find_text_for_idx(bot_text_idx + votevotevote_topline_count + votevotevote_midline_count, &text_length);
 	font_centre(text_length, text, y);
 	
 	votevotevote_last_ms = ms;
