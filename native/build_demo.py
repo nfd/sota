@@ -182,6 +182,9 @@ DEMO = [
 		('after', 'anim', {'name': 0x77016, 'from': 20, 'to': 30}),
 		('after', 'clear', {'plane': 'all'}),
 
+		# Dancer 4: "crazy hips" dancer.
+		('after', 'anim', {'name': 0x8da00, 'from': 0, 'to': 210}),
+
 		('after', 'end', {}),
 ]
 
