@@ -16,11 +16,13 @@
 #define OPT_FULLSCREEN 1
 #define OPT_HELP 2
 #define OPT_MS 3
+#define OPT_NOSOUND 4
 
 struct option options[] = {
 	{"fullscreen", no_argument, NULL, OPT_FULLSCREEN},
 	{"ms", required_argument, NULL, OPT_MS},
 	{"help", no_argument, NULL, OPT_HELP},
+	{"nosound", no_argument, NULL, OPT_NOSOUND},
 	{0, 0, 0, 0}
 };
 
@@ -29,10 +31,13 @@ static void help() {
 	printf("A demo by Spaceballs, revived by WzDD\n");
 	printf("Options:\n\n");
 	printf("  --fullscreen     : run in fullscreen rather than a 640x480 window\n");
+	printf("  --ms <x>         : start at millisecond x rather than the beginning\n");
+	printf("  --nosound        : don't make any noise\n");
 }
 
 int main(int argc, char **argv) {
 	bool fullscreen = false;
+	bool nosound = false;
 	int start_ms = 0;
 
 	while(true) {
@@ -53,6 +58,9 @@ int main(int argc, char **argv) {
 				return 1;
 			case OPT_MS:
 				start_ms = atoi(optarg);
+				break;
+			case OPT_NOSOUND:
+				nosound = true;
 				break;
 			case -1:
 				break;
@@ -84,7 +92,7 @@ int main(int argc, char **argv) {
 	}
 	*/
 
-	if(sound_init() == false) {
+	if(sound_init(nosound) == false) {
 		fprintf(stderr, "couldn't init sound\n");
 		return 1;
 	}
