@@ -77,23 +77,20 @@ void anim_draw(struct animation *anim, int frame_idx)
 static uint8_t *anim_draw_object(uint8_t *data) {
 	/* draw_cmd should be 0xdX for any X */
 	uint8_t draw_cmd = *data++;
-	switch(draw_cmd) {
-		case 0xd2:
-		case 0xd3:
-		case 0xd4:
-		case 0xdd:
-		case 0xde:
-		case 0xdf:
+	//
+	// It seems that the lower 4 bits of the draw command include extra
+	// information about the animation, but I don't use it (or know what it
+	// does)
+	switch(draw_cmd & 0xf0) {
+		case 0xd0:
 		{
 			int num_vertices = *data++;
 			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_scale_x, anim_scale_y, anim_offset_x, anim_offset_y, anim_bitplane, anim_xor);
 			data += (num_vertices * 2);
 			break;
 		}
-		case 0xe6:
-		case 0xe7:
-		case 0xe8:
-		case 0xf2:
+		case 0xe0: // e6 and e7 known
+		case 0xf0: // f2 known
 		{
 			uint8_t *tween_from = data;
 			uint8_t *tween_to   = data;
