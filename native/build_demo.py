@@ -183,7 +183,10 @@ DEMO = [
 		('after', 'clear', {'plane': 'all'}),
 
 		# Dancer 4: "crazy hips" dancer.
+		('after', 'palette', {'values': (0xff110022, 0xff221144, 0xff221144, 0xff221144)}),
+		('after', 'starteffect', {'name': 'copperpastels'}), # TODO also must show 3-delayed image, maybe by turning bitplanes off
 		('after', 'anim', {'name': 0x8da00, 'from': 0, 'to': 210}),
+
 
 		('after', 'end', {}),
 ]
