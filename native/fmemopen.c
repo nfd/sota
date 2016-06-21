@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <string.h>
 
 #include "fmemopen.h"
 
@@ -11,7 +12,7 @@ struct mmfile_struct {
 	uint8_t *buf;
 	fpos_t idx;
 	size_t size;
-}
+};
 
 static int mmfile_read(void *cookie, char *buf, int amt)
 {
@@ -84,7 +85,7 @@ FILE *fmemopen(void *buf, size_t size, const char *mode)
 
 	mmfile->buf = buf;
 	mmfile->size = size;
-	mmfile->idx = idx;
+	mmfile->idx = 0;
 
 	return funopen(mmfile, mmfile_read, mmfile_write, mmfile_seek, mmfile_close);
 }

@@ -7,7 +7,7 @@ CFLAGS=-g -O2 -std=c99 -Wall -Werror -fsanitize=address -Wno-unused-function
 UNAME:=$(shell uname)
 
 ifeq ($(UNAME), Darwin)
-	CFLAGS+=-DEMULATE_FMEMOPEN
+	CFLAGS+=-DEMULATE_FMEMOPEN -DNO_POSIX_REALTIME_CLOCKS -DMAC_ENDIAN_H
 	OBJS+=fmemopen.o
 endif
 

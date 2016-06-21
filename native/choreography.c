@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <SDL2/SDL.h>
 #include <time.h>
+#include <sys/time.h>
 
 #include "files.h"
 #include "graphics.h"
@@ -425,11 +426,19 @@ static void run(int ms) {
 
 static uint64_t gettime_ms()
 {
+#ifdef NO_POSIX_REALTIME_CLOCKS
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+
+	return (uint64_t)(tv.tv_sec * 1000) + (tv.tv_usec / 1000);
+#else
 	struct timespec tp;
 
 	clock_gettime(CLOCK_REALTIME, &tp);
 	
 	return (uint64_t)(tp.tv_sec * 1000) + (tp.tv_nsec / 1000000);
+#endif
 }
 
 static void skip_to_start_ms(int ms) {
