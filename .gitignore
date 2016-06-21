@@ -4,4 +4,5 @@ Spaceballs-StateOfTheArt.dms
 *.o
 native/data/*
 native/sota
-
+native/sota.wad
+__pycache__

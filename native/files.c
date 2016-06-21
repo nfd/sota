@@ -12,6 +12,10 @@
 
 #include "files.h"
 
+#ifdef EMULATE_FMEMOPEN
+#include "fmemopen.h"
+#endif
+
 uint8_t *wad;
 
 static uint8_t *read_entire_file(char *filename, ssize_t *size_out) {
@@ -103,7 +107,6 @@ FILE *file_open(int idx)
 	} else {
 		return fmemopen(data, size, "r");
 	}
-	// TODO can use funopen on bsd.
 }
 
 bool files_init()
