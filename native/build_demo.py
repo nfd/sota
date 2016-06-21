@@ -39,6 +39,14 @@ FONTMAP = [
 96,  16,  110, 63, # !, mapped as [
 ]
 
+EFFECT_NUM = {
+		'nothing': 0,
+		'spotlights': 1,
+		'votevotevote': 2,
+		'delayedblit': 3,
+		'copperpastels': 4,
+}
+
 DEMO = [
 		# Intro: hand moving out
 		('after', 'clear', {'plane': 'all'}),
@@ -185,7 +193,8 @@ DEMO = [
 		# Dancer 4: "crazy hips" dancer.
 		('after', 'palette', {'values': (0xff110022, 0xff221144, 0xff221144, 0xff221144)}),
 		('after', 'starteffect', {'name': 'copperpastels'}), # TODO also must show 3-delayed image, maybe by turning bitplanes off
-		('after', 'anim', {'name': 0x8da00, 'from': 0, 'to': 210}),
+		#('after', 'anim', {'name': 0x8da00, 'from': 0, 'to': 210}),
+		('after', 'pause', {'ms': 3000}),
 
 
 		('after', 'end', {}),
@@ -360,7 +369,7 @@ def pack_text_block(text_block):
 	return struct.pack(ENDIAN + 'II', len(indices_and_bytes) + 8, len(text_block)) + indices_and_bytes
 
 def encode_starteffect(wad, args):
-	effect_num = {'nothing': 0, 'spotlights': 1, 'votevotevote': 2, 'delayedblit': 3}[args['name']]
+	effect_num = EFFECT_NUM[args['name']]
 	#files_idx = [wad.add(filename) for filename in args.get('files', ())]
 	#files_packed = struct.pack(ENDIAN + ('I' * len(files_idx)), *files_idx)
 

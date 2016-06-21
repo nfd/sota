@@ -36,6 +36,7 @@
 #define EFFECT_SPOTLIGHTS 1
 #define EFFECT_VOTEVOTEVOTE 2
 #define EFFECT_DELAYEDBLIT 3
+#define EFFECT_COPPERPASTELS 4
 
 #define ILBM_FULLSCREEN 0
 #define ILBM_CENTRE 1
@@ -284,9 +285,12 @@ static void cmd_starteffect(int ms, struct choreography_starteffect *effect) {
 
 	if(state.effect_deinit) {
 		state.effect_deinit();
+		state.effect_tick = state.effect_deinit = NULL;
 	}
 
 	switch(effect->effect_num) {
+		case EFFECT_NOTHING:
+			break;
 		case EFFECT_SPOTLIGHTS:
 			background_init_spotlights();
 			state.effect_tick = background_spotlights_tick;
@@ -302,9 +306,13 @@ static void cmd_starteffect(int ms, struct choreography_starteffect *effect) {
 			state.effect_tick = background_delayedblit_tick;
 			state.effect_deinit = background_deinit_delayedblit;
 			break;
-		case EFFECT_NOTHING:
+		case EFFECT_COPPERPASTELS:
+			background_init_copperpastels();
+			state.effect_tick = background_copperpastels_tick;
+			state.effect_deinit = background_deinit_copperpastels;
+			break;
 		default:
-			state.effect_tick = state.effect_deinit = NULL;
+			fprintf(stderr, "Unknown effect %d ignored\n", effect->effect_num);
 			break;
 	}
 }

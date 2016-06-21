@@ -11,3 +11,6 @@ void background_init_delayedblit();
 void background_delayedblit_tick(int ms);
 void background_deinit_delayedblit();
 
+void background_init_copperpastels();
+void background_copperpastels_tick(int ms);
+void background_deinit_copperpastels();

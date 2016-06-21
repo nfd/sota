@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "graphics.h"
 #include "iff.h"
@@ -30,6 +31,39 @@ struct {
 	uint16_t entries[];
 } *current_text_block;
 
+#define COPPER_PASTELS_UPDATE_MS 200
+#define COPPER_PASTELS_WIDTH 16
+#define COPPER_PASTELS_HEIGHT 18
+#define COPPER_PASTELS_NUM_SPOTS 2
+static uint8_t pastels_brush[COPPER_PASTELS_WIDTH * COPPER_PASTELS_HEIGHT];
+
+struct {
+	uint32_t colours[COPPER_PASTELS_HEIGHT * COPPER_PASTELS_WIDTH];
+	int next_update_ms;
+} copperpastels;
+
+#define SQUARE(x) ((x) * (x))
+
+static void precalculate_pastels_brush() {
+	/* Precalculate the pastels brush, which is a filled circle with intensity
+	 * a function of distance from the centre.
+	*/
+	int centrex = COPPER_PASTELS_HEIGHT / 2;
+	int centrey = COPPER_PASTELS_WIDTH / 2;
+
+	float max_distance = sqrtf((centrex * centrex) + (centrey * centrey));
+
+	for(int y = 0; y < COPPER_PASTELS_HEIGHT; y++) {
+		for(int x = 0; x < COPPER_PASTELS_WIDTH; x++) {
+			int idx = (y * COPPER_PASTELS_WIDTH) + x;
+
+			float distance = sqrtf(SQUARE(abs(x - centrex)) + SQUARE(abs(y - centrey)));
+
+			pastels_brush[idx] = 255 - ((distance / max_distance) * 256);
+		}
+	}
+}
+
 void background_init()
 {
 	scale_x = graphics_width() / 256;
@@ -38,6 +72,8 @@ void background_init()
 
 	bitplane_width = graphics_bitplane_width();
 	bitplane_height = graphics_bitplane_height();
+
+	precalculate_pastels_brush();
 }
 
 void background_init_spotlights() {
@@ -183,6 +219,45 @@ void background_delayedblit_tick(int ms)
 
 void background_deinit_delayedblit()
 {
+}
+
+
+/* Copper effects: x is between 0 and 40 (every 8 pixels on a 320-width display), y is between 0 and 256. */
+static void background_copperpastels_do_copper_effect(int x, int y, uint32_t *palette)
+{
+	x = (x * COPPER_PASTELS_WIDTH) / 40;
+	y = (y * COPPER_PASTELS_HEIGHT) / 256;
+
+	palette[0] = copperpastels.colours[(y * COPPER_PASTELS_WIDTH) + x];
+}
+
+void background_init_copperpastels()
+{
+	/* We have colour spotlights, yellow, blue, green, and red, which take turns entering and exiting the display.
+	 * The background is a blend between these spotlights and white (the default colour).
+	 *
+	 * We only ever show two spotlights at once.
+	 * 
+	 * The spotlights are very granular, so we can calculate them once (e.g. on a 16x18 grid)
+	 * and then just reference that grid when blitting. We can update the grid less frequently,
+	 * say five times a second.
+	*/
+	graphics_copper_effect_register(&background_copperpastels_do_copper_effect);
+	copperpastels.next_update_ms = 0;
+}
+
+void background_copperpastels_tick(int ms)
+{
+	if(ms >= copperpastels.next_update_ms) {
+		memset(copperpastels.colours, 0xff, COPPER_PASTELS_WIDTH * COPPER_PASTELS_HEIGHT * sizeof(uint32_t));
+
+		copperpastels.next_update_ms = ms + COPPER_PASTELS_UPDATE_MS;
+	}
+}
+
+void background_deinit_copperpastels()
+{
+	graphics_copper_effect_unregister();
 }
 
 

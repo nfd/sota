@@ -12,6 +12,8 @@ SDL_Texture *texture; // which we will update every frame.
 
 int window_width, window_height;
 
+copper_effect *copper_effect_handler;
+
 uint32_t *framebuffer;  /* size window_width * window_height ( * 4) */
 
 /* Bitplane-based rendering into 'chunky bitplanes'. */
@@ -67,6 +69,8 @@ void graphics_bitplane_set_offset(int bitplane_idx, int x, int y)
 }
 
 int graphics_init(bool fullscreen) {
+	copper_effect_handler = NULL;
+
 	SDL_DisplayMode currentMode;
 
 	if(SDL_GetCurrentDisplayMode(0, &currentMode) != 0) {
@@ -472,8 +476,22 @@ void graphics_planar_render()
 
 	int fb_idx = 0;
 
+	float copper_divisor = ((float)window_width) / 320.0 * 8.0;
+
 	for(int y = 0; y < window_height; y++) {
+		int this_copper, last_copper = -1;
+
 		for(int x = 0; x < window_width; x++) {
+			if(copper_effect_handler != NULL) {
+				this_copper = x / copper_divisor;
+				if(this_copper > last_copper) {
+					int copper_y = y * 256 / window_height;
+
+					(copper_effect_handler)(this_copper, copper_y, palette);
+					last_copper = this_copper;
+				}
+			}
+
 			// TODO this is pretty horrible, should go planar.
 			uint8_t colour = (*(plane_idx_0 + x) ? 1 : 0)|
 				(*(plane_idx_1 + x) ? 2 : 0) |
@@ -520,4 +538,15 @@ void graphics_blit(int mask, int sx, int sy, int w, int h, int dx, int dy)
 		}
 	}
 }
+
+void graphics_copper_effect_register(copper_effect *handler)
+{
+	copper_effect_handler = handler;
+}
+
+void graphics_copper_effect_unregister()
+{
+	copper_effect_handler = NULL;
+}
+
 
