@@ -1,24 +1,11 @@
 #include <inttypes.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include "backend.h"
 
 // administration
-int graphics_init(bool fullscreen);
-int graphics_width();
-int graphics_height();
-
-// bitplanes
-int graphics_bitplane_width();
-int graphics_bitplane_height();
-int graphics_bitplane_stride();
-void graphics_bitplane_set_offset(int bitplane_idx, int x, int y);
+int graphics_init();
 int graphics_shutdown();
-void graphics_planar_render();
-void graphics_planar_clear(int bitplane_idx);
-void graphics_clear_visible();
-uint8_t *graphics_bitplane_get(int idx); 
-void graphics_bitplane_blit(int plane_from, int plane_to, int sx, int sy, int w, int h, int dx, int dy);
-void graphics_blit(int mask, int sx, int sy, int w, int h, int dx, int dy);
 
 // the palette
 void graphics_set_palette(size_t num_elements, uint32_t *elements);

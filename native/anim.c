@@ -10,6 +10,7 @@
 #include "anim.h"
 #include "graphics.h"
 #include "files.h"
+#include "backend.h"
 
 #define ANIM_SOURCE_WIDTH 256
 #define ANIM_SOURCE_HEIGHT 200
@@ -23,9 +24,12 @@ int anim_offset_y;
 int anim_bitplane;
 bool anim_xor;
 
+extern struct backend_interface_struct g_backend;
+
 uint8_t current_tween[MAX_TWEENED_VERTICES * 2];
 
-void anim_init(int display_width, int display_height) {
+void anim_init()
+{
 	/* Calculate scale and offset for animation.
 	 * The original animations are nominally 256 x 204 (apparently), so find the best integer scale which matches that,
 	 * then centre the result horizontally but ensure it touches the bottom of the display vertically.
@@ -33,12 +37,11 @@ void anim_init(int display_width, int display_height) {
 	 * TODO we'll want to change this on a scene-by-scene basis I think: it's better to have the figure fullscreen
 	 * and slightly cropped than uncropped but far away.
 	*/
+	anim_scale_x = ((float)g_backend.width) / ANIM_SOURCE_WIDTH;
+	anim_scale_y = ((float)g_backend.height) / ANIM_SOURCE_HEIGHT;
 
-	anim_scale_x = ((float)display_width) / ANIM_SOURCE_WIDTH;
-	anim_scale_y = ((float)display_height) / ANIM_SOURCE_HEIGHT;
-
-	anim_offset_x = (display_width / 2) - ( (ANIM_SOURCE_WIDTH * anim_scale_x) / 2);
-	anim_offset_y = display_height - (ANIM_SOURCE_HEIGHT * anim_scale_y);
+	anim_offset_x = (g_backend.width / 2) - ( (ANIM_SOURCE_WIDTH * anim_scale_x) / 2);
+	anim_offset_y = g_backend.height - (ANIM_SOURCE_HEIGHT * anim_scale_y);
 
 	anim_bitplane = 0;
 }
@@ -67,7 +70,7 @@ void anim_draw(struct animation *anim, int frame_idx)
 		return;
 	}
 
-	graphics_planar_clear(anim_bitplane);
+	g_backend.planar_clear(anim_bitplane);
 
 	for(uint8_t i = 0; i < num_objects; i++) {
 		data = anim_draw_object(data);

@@ -1,5 +1,7 @@
+#include <stdbool.h>
+
 void background_init();
-void background_init_spotlights();
+bool background_init_spotlights();
 void background_spotlights_tick(int cnt);
 void background_deinit_spotlights();
 

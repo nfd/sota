@@ -2,8 +2,7 @@
 #include <stdbool.h>
 #include <inttypes.h>
 #include <stddef.h>
-#include <SDL2/SDL.h>
-#include <time.h>
+#include <string.h>
 
 #include "files.h"
 #include "graphics.h"
@@ -12,8 +11,7 @@
 #include "sound.h"
 #include "iff.h"
 #include "font.h"
-
-#define FILENAME "data/choreography.bin"
+#include "backend.h"
 
 #define CMD_END 0
 #define CMD_CLEAR 1
@@ -44,6 +42,8 @@
 /* Frame rate the demo runs at. This doesn't affect the speed of the animations, 
  * which run at 25 fps */
 #define MS_PER_FRAME 20
+
+extern struct backend_interface_struct g_backend;
 
 struct choreography_header {
 	uint32_t start_ms;
@@ -423,15 +423,6 @@ static void run(int ms) {
 	}
 }
 
-static uint64_t gettime_ms()
-{
-	struct timespec tp;
-
-	clock_gettime(CLOCK_REALTIME, &tp);
-	
-	return (uint64_t)(tp.tv_sec * 1000) + (tp.tv_nsec / 1000000);
-}
-
 static void skip_to_start_ms(int ms) {
 	/* Advance our start, but apply palette changes. This is a hack. */
 	pos = (struct choreography_header *)choreography;
@@ -455,34 +446,25 @@ void choreography_run_demo(int ms)
 	skip_to_start_ms(ms);
 
 	bool keepgoing = true;
-	uint64_t starttime = gettime_ms();
+	uint64_t starttime = backend->getTimeMS();
 
 	/* If 'ms' is initially >0, backdate startime */
 	starttime -= ms;
 
 	while(keepgoing) {
-		uint64_t frametime = gettime_ms();
+		uint64_t frametime = backend->getTimeMS();
 		ms = frametime - starttime;
 
 		create_new_state(ms);
 		run(ms);
 
-		int64_t time_remaining_this_frame = MS_PER_FRAME - (gettime_ms() - frametime);
+		int64_t time_remaining_this_frame = MS_PER_FRAME - (backend->getTimeMS() - frametime);
 
 		//anim_draw(anim, i);
 		//background_concentric_circles_tick(i);
 		graphics_planar_render();
-		
-		if(time_remaining_this_frame > 0) {
-			SDL_Event event;
-			if(SDL_WaitEventTimeout(&event, time_remaining_this_frame) != 0) {
-				switch(event.type) {
-					case SDL_KEYUP:
-						keepgoing = false;
-						break;
-				}
-			}
-		}
+
+		keepgoing = backend->shouldDisplayNextFrame(time_remaining_this_frame);
 	}
 }
 

@@ -2,33 +2,18 @@
 #include <math.h>
 #include <inttypes.h>
 #include <stdbool.h>
-#include <SDL2/SDL.h>
+#include <string.h>
+#include <stdlib.h>
 
 #include "graphics.h"
+#include "backend.h"
 
-SDL_Window *window;
-SDL_Renderer *renderer;
-SDL_Texture *texture; // which we will update every frame.
-
-int window_width, window_height;
-
-copper_effect *copper_effect_handler;
-
-uint32_t *framebuffer;  /* size window_width * window_height ( * 4) */
-
-/* Bitplane-based rendering into 'chunky bitplanes'. */
-#define NUM_BITPLANES 5
-uint8_t *plane[NUM_BITPLANES];
-
-/* For now, bitplanes are 2x the width and height of the window */
-int bitplane_width, bitplane_height;
-
-int plane_offset[NUM_BITPLANES];
+extern struct backend_interface_struct g_backend;
 
 /* Current palette */
 uint32_t palette[32];
 
-/* Data related to the polygon fill algorithm. Must be initialised because it depends on the window height. */
+/* Data related to the polygon fill algorithm. Must be initialised because it depends on the height. */
 struct poly_elem {
 	float xcurr;
 	int ymax;
@@ -41,109 +26,20 @@ struct poly_elem {
 
 struct poly_elem **edge_table;
 
-int graphics_width() {
-	return window_width;
-}
-
-int graphics_height() {
-	return window_height;
-}
-
-int graphics_bitplane_width() {
-	return bitplane_width;
-}
-
-int graphics_bitplane_height() {
-	return bitplane_height;
-}
-
-int graphics_bitplane_stride() {
-	return bitplane_width;
-}
-
-void graphics_bitplane_set_offset(int bitplane_idx, int x, int y)
-{
-	int offset = (bitplane_width * y) + x;
-
-	plane_offset[bitplane_idx] = offset;
-}
-
-int graphics_init(bool fullscreen) {
-	copper_effect_handler = NULL;
-
-	SDL_DisplayMode currentMode;
-
-	if(SDL_GetCurrentDisplayMode(0, &currentMode) != 0) {
-		fprintf(stderr, "SDL_GetCurrentDisplayMode: %s\n", SDL_GetError());
-		return -1;
-	}
-
-	if(fullscreen) {
-		window = SDL_CreateWindow("State Of The Art", 0, 0, currentMode.w, currentMode.h, SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_OPENGL);
-	} else {
-		window = SDL_CreateWindow("State Of The Art", 0, 0, 640, 512, SDL_WINDOW_OPENGL);
-	}
-	if(window == NULL) {
-		fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
-		return -1;
-	}
-
-	SDL_GetWindowSize(window, &window_width, &window_height);
-
-	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-	if(renderer == NULL) {
-		fprintf(stderr, "SDL_CreateRenderer: %s\n", SDL_GetError());
-		return -1;
-	}
-
-	texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, window_width, window_height);
-	if(texture == NULL) {
-		fprintf(stderr, "SDL_CreateTexture: %s\n", SDL_GetError());
-		return -1;
-	}
-
-	framebuffer = malloc(window_width * window_height * sizeof(uint32_t));
-	if(framebuffer == NULL) {
-		perror("framebuffer");
-		return -1;
-	}
-
+int graphics_init() {
 	// edge_table is used by the scanline polygon rendering algorithm
-	edge_table = malloc(window_height * sizeof(struct poly_elem *));
+	edge_table = g_backend.malloc(g_backend.height * sizeof(struct poly_elem *));
 	if(edge_table == NULL) {
 		perror("edge_table");
 		return -1;
 	}
 
-	/* Create the bitplanes. */
-	bitplane_width = window_width * 2;
-	bitplane_height = window_height * 2;
-	for(int i = 0; i < NUM_BITPLANES; i++) {
-		plane[i] = malloc(bitplane_width * bitplane_height);
-		if(plane[i] == NULL) {
-			fprintf(stderr, "bitplane alloc\n");
-			return -1; // we don't clean up but this is fatal anyway
-		}
-		plane_offset[i] = 0;
-	}
-
-	// no mouse
-	SDL_ShowCursor(SDL_DISABLE);
-
-	SDL_RenderClear(renderer);
-	SDL_RenderPresent(renderer);
-
 	return 0;
 }
 
 int graphics_shutdown() {
-	SDL_DestroyRenderer(renderer);
-	SDL_DestroyWindow(window);
-
-	for(int i = 0; i < NUM_BITPLANES; i++) {
-		free(plane[i]);
-		plane[i] = NULL;
-	}
+	g_backend.free(edge_table);
+	edge_table = NULL;
 
 	return 0;
 }
@@ -189,63 +85,13 @@ void graphics_lerp_palette(size_t num_elements, uint32_t *from, uint32_t *to, in
 	}
 }
 
-static void planar_line_horizontal(int bitplane_idx, int y, int start_x, int end_x, bool xor)
-{
-	y = min(max(y, 0), bitplane_height - 1);
-	start_x = max(min(start_x, bitplane_width - 1), 0);
-	end_x = min(max(end_x, 0), bitplane_width - 1);
-
-	if(start_x > end_x)
-		return;
-
-	uint8_t *bitplane = plane[bitplane_idx];
-	uint8_t pen = 1 << bitplane_idx;
-	
-	bitplane += (y * bitplane_width) + start_x;
-
-	if(xor) {
-		for(int length = end_x - start_x; length; length--) {
-			*bitplane++ ^= pen;
-		}
-	} else {
-		for(int length = end_x - start_x; length; length--) {
-			*bitplane++ = pen;
-		}
-	}
-}
-
-static void planar_line_vertical(int bitplane_idx, int x, int start_y, int end_y, bool xor)
-{
-	x = min(max(x, 0), bitplane_width - 1);
-	start_y = max(min(start_y, bitplane_height - 1), 0);
-	end_y = min(max(end_y, 0), bitplane_height - 1);
-
-	if(start_y > end_y)
-		return;
-
-	uint8_t *bitplane = plane[bitplane_idx];
-	uint8_t pen = 1 << bitplane_idx;
-	
-	bitplane += (start_y * bitplane_width) + x;
-
-	if (xor) {
-		for(int length = end_y - start_y; length; length--) {
-			*bitplane ^= pen;
-			bitplane += bitplane_width;
-		}
-	} else {
-		for(int length = end_y - start_y; length; length--) {
-			*bitplane = pen;
-			bitplane += bitplane_width;
-		}
-	}
-}
-
+/*
 static inline void planar_putpixel(int bitplane_idx, int x, int y)
 {
 	if(x >= 0 && x < bitplane_width && y >= 0 && y <= bitplane_height)
 		plane[bitplane_idx][(y * bitplane_width) + x] = (1 << bitplane_idx);
 }
+*/
 
 /* Heart of everything! */
 
@@ -290,11 +136,11 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 	// is an index into the line_info table.
 	int next_line_info = 0;
 	int i;
-	int global_ymin = window_height;
+	int global_ymin = g_backend.height;
 	int global_ymax = 0;
 
 	/* Clear edge table */
-	memset(edge_table, 0, window_height * sizeof(struct poly_elem *));
+	memset(edge_table, 0, g_backend.height * sizeof(struct poly_elem *));
 
 	/* Fill edge_table and line_info*/
 	for(i=0; i < (num_vertices * 2); i+= 2) {
@@ -324,11 +170,11 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 			tmp = x0; x0 = x1; x1 = tmp;
 		}
 
-		y0 = min(max(0, y0), window_height - 1);
-		y1 = max(min(window_height - 1, y1), 0);
+		y0 = min(max(0, y0), g_backend.height - 1);
+		y1 = max(min(g_backend.height - 1, y1), 0);
 
-		x0 = min(max(0, x0), window_width - 1);
-		x1 = max(min(window_width - 1, x1), 0);
+		x0 = min(max(0, x0), g_backend.width - 1);
+		x1 = max(min(g_backend.width - 1, x1), 0);
 
 		if(y0 < global_ymin)
 			global_ymin = y0; // highest point of the polygon.
@@ -375,7 +221,7 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 
 			if(is_drawing) {
 				// TODO: this sometimes results in lines where prev_x = next_x - 2. Figure out why.
-				planar_line_horizontal(bitplane_idx, y + yofs, xofs + prev_x, xofs + next_x, xor);
+				g_backend.planar_line_horizontal(bitplane_idx, y + yofs, xofs + prev_x, xofs + next_x, xor);
 			}
 
 			if((!is_vertex) || (active_list[i]->ymax == y)) {
@@ -402,6 +248,10 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 	}
 }
 
+/* TODO: Backend draw cmds are now window-only, so the horizontal and vertical line commands
+ * should move back into here...
+*/
+
 void draw_thick_circle(int xc, int yc, int radius, int thickness, int bitplane_idx) {
 	if(radius <= 0)
 		return;
@@ -413,14 +263,14 @@ void draw_thick_circle(int xc, int yc, int radius, int thickness, int bitplane_i
     int errinner = 1 - xinner;
 
 	while(xouter >= y) {
-		planar_line_horizontal(bitplane_idx, yc + y, xc + xinner, xc + xouter, false);
-		planar_line_vertical(bitplane_idx, xc + y,  yc + xinner, yc + xouter, false);
-		planar_line_horizontal(bitplane_idx, yc + y, xc - xouter, xc - xinner, false);
-		planar_line_vertical(bitplane_idx, xc - y,  yc + xinner, yc + xouter, false);
-		planar_line_horizontal(bitplane_idx, yc - y, xc - xouter, xc - xinner, false);
-		planar_line_vertical(bitplane_idx, xc - y,  yc - xouter, yc - xinner, false);
-		planar_line_horizontal(bitplane_idx, yc - y, xc + xinner, xc + xouter, false);
-		planar_line_vertical(bitplane_idx, xc + y,  yc - xouter, yc - xinner, false);
+		g_backend.planar_line_horizontal(bitplane_idx, yc + y, xc + xinner, xc + xouter, false);
+		g_backend.planar_line_vertical(bitplane_idx, xc + y,  yc + xinner, yc + xouter, false);
+		g_backend.planar_line_horizontal(bitplane_idx, yc + y, xc - xouter, xc - xinner, false);
+		g_backend.planar_line_vertical(bitplane_idx, xc - y,  yc + xinner, yc + xouter, false);
+		g_backend.planar_line_horizontal(bitplane_idx, yc - y, xc - xouter, xc - xinner, false);
+		g_backend.planar_line_vertical(bitplane_idx, xc - y,  yc - xouter, yc - xinner, false);
+		g_backend.planar_line_horizontal(bitplane_idx, yc - y, xc + xinner, xc + xouter, false);
+		g_backend.planar_line_vertical(bitplane_idx, xc + y,  yc - xouter, yc - xinner, false);
 
 		y++;
 
@@ -444,76 +294,7 @@ void draw_thick_circle(int xc, int yc, int radius, int thickness, int bitplane_i
 	}
 }
 
-void graphics_planar_clear(int bitplane_idx)
-{
-	memset(plane[bitplane_idx], 0, bitplane_width * bitplane_height);
-}
-
-void graphics_clear_visible()
-{
-	for(int plane_idx = 0; plane_idx < 5; plane_idx++) {
-		for(int y = 0; y < window_height; y++) {
-			memset(plane[plane_idx] + (y * bitplane_width), 0, window_width);
-		}
-	}
-}
-
-uint8_t *graphics_bitplane_get(int idx)
-{
-	// NB returns the bitplane sans offset.
-	return plane[idx];
-}
-
-/* Combine bitplanes */
-void graphics_planar_render()
-{
-	//SDL_RenderPresent(renderer);
-	uint8_t *plane_idx_0 = plane[0] + plane_offset[0];
-	uint8_t *plane_idx_1 = plane[1] + plane_offset[1];
-	uint8_t *plane_idx_2 = plane[2] + plane_offset[2];
-	uint8_t *plane_idx_3 = plane[3] + plane_offset[3];
-	uint8_t *plane_idx_4 = plane[4] + plane_offset[4];
-
-	int fb_idx = 0;
-
-	float copper_divisor = ((float)window_width) / 320.0 * 8.0;
-
-	for(int y = 0; y < window_height; y++) {
-		int this_copper, last_copper = -1;
-
-		for(int x = 0; x < window_width; x++) {
-			if(copper_effect_handler != NULL) {
-				this_copper = x / copper_divisor;
-				if(this_copper > last_copper) {
-					int copper_y = y * 256 / window_height;
-
-					(copper_effect_handler)(this_copper, copper_y, palette);
-					last_copper = this_copper;
-				}
-			}
-
-			// TODO this is pretty horrible, should go planar.
-			uint8_t colour = (*(plane_idx_0 + x) ? 1 : 0)|
-				(*(plane_idx_1 + x) ? 2 : 0) |
-				(*(plane_idx_2 + x) ? 4 : 0) |
-				(*(plane_idx_3 + x) ? 8 : 0) |
-				(*(plane_idx_4 + x) ? 16: 0);
-			framebuffer[fb_idx + x] = palette[colour];
-		}
-
-		plane_idx_0 += bitplane_width;
-		plane_idx_1 += bitplane_width;
-		plane_idx_2 += bitplane_width;
-		plane_idx_3 += bitplane_width;
-		plane_idx_4 += bitplane_width;
-		fb_idx += window_width;
-	}
-
-	SDL_UpdateTexture(texture, NULL, framebuffer, window_width * 4);
-	SDL_RenderCopy(renderer, texture, NULL, NULL);
-	SDL_RenderPresent(renderer);
-}
-
+#if 0
 void graphics_bitplane_blit(int plane_from, int plane_to, int sx, int sy, int w, int h, int dx, int dy)
 {
 	int src_offset = (bitplane_width * sy) + sx;
@@ -538,15 +319,6 @@ void graphics_blit(int mask, int sx, int sy, int w, int h, int dx, int dy)
 		}
 	}
 }
-
-void graphics_copper_effect_register(copper_effect *handler)
-{
-	copper_effect_handler = handler;
-}
-
-void graphics_copper_effect_unregister()
-{
-	copper_effect_handler = NULL;
-}
+#endif
 
 

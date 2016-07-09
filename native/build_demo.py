@@ -395,7 +395,7 @@ def encode_demo_entry(wad, entry):
 	encoder = globals()['encode_%s' % (command)]
 	return encoder(wad, args)
 
-def get_demo_sequence(wad):
+def get_demo_sequence(wad, choreography):
 	# The time unit is milliseconds. Most animations run at 25fps or 40ms/frame.
 	# This can be changed if necessary using the 'msperframe' key of an 'anim' entry.
 
@@ -404,7 +404,7 @@ def get_demo_sequence(wad):
 	previous_start = 0 # ms
 	previous_end = 0 # ms
 
-	for entry in DEMO:
+	for entry in choreography:
 
 		this_entry_ms, encoded_entry = encode_demo_entry(wad, entry)
 		
@@ -424,9 +424,20 @@ def get_demo_sequence(wad):
 		previous_start = this_start
 		previous_end = this_end
 
-wad = Wad(ENDIAN)
-encoded = b''.join(encoded for encoded in get_demo_sequence(wad))
-wad.add_bin(encoded, is_choreography=True)
-wad.write('sota.wad')
-print("wrote sota.wad")
+def build_demo():
+	wad = Wad(ENDIAN)
+	encoded = b''.join(encoded for encoded in get_demo_sequence(wad, DEMO))
+	wad.add_bin(encoded, is_choreography=True)
+	wad.write('sota.wad')
+	print("wrote sota.wad")
+
+def build_watchface(choreography):
+	wad = Wad(ENDIAN)
+	encoded = b''.join(encoded for encoded in get_demo_sequence(wad, choreography))
+	wad.add_bin(encoded, is_choreography=True)
+	wad.write('sota-pebble.wad')
+	print('wrote sota-pebble.wad')
+
+if __name__ == '__main__':
+	build_demo()
 

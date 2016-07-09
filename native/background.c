@@ -9,18 +9,22 @@
 #include "graphics.h"
 #include "iff.h"
 #include "font.h"
+#include "backend.h"
+
+extern struct backend_interface_struct g_backend;
 
 #define VOTEVOTEVOTE_DISPLAY_MS 40
 
 static int scale_x, scale_y;
 static int global_scale;
-static int bitplane_width, bitplane_height; // copied from graphics
 
-int votevotevote_last_palette = 0;
-int votevotevote_last_ms;
-int votevotevote_topline_count, votevotevote_midline_count, votevotevote_botline_count; // # texts available for each line
-int votevotevote_top, votevotevote_mid, votevotevote_bot; // the previous choice
-uint32_t *votevotevote_palette_a, *votevotevote_palette_b;
+static int votevotevote_last_palette = 0;
+static int votevotevote_last_ms;
+static int votevotevote_topline_count, votevotevote_midline_count, votevotevote_botline_count; // # texts available for each line
+static int votevotevote_top, votevotevote_mid, votevotevote_bot; // the previous choice
+static uint32_t *votevotevote_palette_a, *votevotevote_palette_b;
+
+static struct Bitplane bitplanes[2];
 
 int delayed_blit_next_blit = 0; // ms
 int delayed_blit_delay = 40; // ms
@@ -66,35 +70,51 @@ static void precalculate_pastels_brush() {
 
 void background_init()
 {
-	scale_x = graphics_width() / 256;
-	scale_y = graphics_height() / 256;
+	scale_x = g_backend.width / 256;
+	scale_y = g_backend.height / 256;
 	global_scale = scale_x > scale_y? scale_x: scale_y;
-
-	bitplane_width = graphics_bitplane_width();
-	bitplane_height = graphics_bitplane_height();
 
 	precalculate_pastels_brush();
 }
 
-void background_init_spotlights() {
+bool background_init_spotlights() {
+	// spot 0 trails all over the display
+	bitplanes[0].width = g_backend.width * 2;
+	bitplanes[0].height = g_backend.height * 2;
+	bitplanes[0].stride = bitplanes[0].width / 8;
+	bitplanes[0].offsetx = bitplanes[0].offsety = 0;
+	bitplanes[0].idx = 1;
+	bitplanes[0].data = g_backend.malloc(bitplanes[0].width * bitplanes[0].height / 8);
+	if(bitplanes[0].data == NULL) 
+		return false;
+
+	// spot 1 moves up and down, reusing the same data.
+	bitplanes[1].width = bitplanes[0].width;
+	bitplanes[1].height = bitplanes[0].height;
+	bitplanes[1].stride = bitplanes[0].stride;
+	bitplanes[1].offsetx = bitplanes[1].offsety = 0;
+	bitplanes[1].idx = 2;
+	bitplanes[1].data = bitplanes[0].data;
+
 	/* Scale backgrounds sensibly */
 	int thickness = 4 * global_scale;
 	int gap = (2 * thickness) / 3;
 
-	int half_bitplane_width = graphics_bitplane_width() / 2;
-	int half_bitplane_height = graphics_bitplane_height() / 2;
+	int half_bitplane_width = g_backend.width / 2;
+	int half_bitplane_height = g_backend.height / 2;
 
 	int longest_distance = sqrtf(half_bitplane_width * half_bitplane_width + half_bitplane_height * half_bitplane_height);
 
 	for(int radius = thickness; radius < longest_distance; radius+= (thickness + gap)) {
-		draw_thick_circle(half_bitplane_width, half_bitplane_height, radius, thickness, 1);
-		draw_thick_circle(half_bitplane_width, half_bitplane_height, radius, thickness, 2);
+		draw_thick_circle(bitplanes[0].data, half_bitplane_width, half_bitplane_height, radius, thickness);
 	}
+
+	return true;
 }
 
 void background_deinit_spotlights() {
-	graphics_bitplane_set_offset(1, 0, 0);
-	graphics_bitplane_set_offset(2, 0, 0);
+	g_backend.free(bitplanes[0].data);
+	g_backend.free(bitplanes[1].data);
 }
 
 void background_spotlights_tick(int cnt) {
@@ -104,11 +124,13 @@ void background_spotlights_tick(int cnt) {
 	// 2 moves from bottom left to top left and back.
 	//
 	// We do everything on a nominal 256x256 scale and then scale up.
+	bitplanes[0].offsetx = (128 + (128 * sinf(((float)cnt) / 800))) * scale_x;
+	bitplanes[0].offsety = (128 + (128 * sinf(((float)cnt) / 2000))) * scale_y;
 
-	graphics_bitplane_set_offset(2, (30 * scale_x), (128 + (128 * sinf(1.0 + ((float)cnt) / 1200))) * scale_y);
+	bitplanes[1].offsetx = (30 * scale_x);
+	bitplanes[1].offsety = (128 + (128 * sinf(1.0 + ((float)cnt) / 1200))) * scale_y;
 
-	graphics_bitplane_set_offset(1, (128 + (128 * sinf(((float)cnt) / 800))) * scale_x,
-			(128 + (128 * sinf(((float)cnt) / 2000))) * scale_y);
+	g_backend->blit(g_backend.width, g_backend.height, BLIT_MODE_AND, 2, bitplanes);
 }
 
 void background_init_votevotevote(void *effect_data, uint32_t *palette_a, uint32_t *palette_b)

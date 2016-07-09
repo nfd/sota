@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdbool.h>
-#include <SDL2/SDL.h>
 #include <unistd.h>
 #include <getopt.h>
 #include <stdlib.h>
@@ -12,11 +11,14 @@
 #include "sound.h"
 #include "files.h"
 #include "font.h"
+#include "posix_sdl2_backend.h"
 
 #define OPT_FULLSCREEN 1
 #define OPT_HELP 2
 #define OPT_MS 3
 #define OPT_NOSOUND 4
+
+extern struct backend_interface_struct g_backend; // defined in the specific backend
 
 struct option options[] = {
 	{"fullscreen", no_argument, NULL, OPT_FULLSCREEN},
@@ -67,6 +69,10 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	if(g_backend.init(&g_backend, fullscreen) == false) {
+		fprintf(stderr, "couldn't init backend\n");
+	}
+
 	if(files_init() == false) {
 		fprintf(stderr, "couldn't read wad\n");
 		return 1;
@@ -74,12 +80,6 @@ int main(int argc, char **argv) {
 
 	if(font_init() == false) {
 		fprintf(stderr, "couldn't init fonts\n");
-		return 1;
-	}
-
-
-	if(SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO) != 0) {
-		fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
 		return 1;
 	}
 
@@ -102,8 +102,8 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	graphics_init(fullscreen);
-	anim_init(graphics_width(), graphics_height());
+	graphics_init();
+	anim_init();
 	background_init();
 
 	choreography_run_demo(start_ms);
@@ -142,8 +142,8 @@ int main(int argc, char **argv) {
 #endif
 
 	graphics_shutdown();
-	SDL_Quit();
 	sound_deinit();
 	files_deinit();
+	g_backend.shutdown();
 }
 
