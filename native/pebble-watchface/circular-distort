@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+
+from PIL import Image
+import argparse
+import math
+
+DIAMETER = 176 # Pebble Time Round is 180x180 but the OS takes 2 px off the side
+RADIUS = DIAMETER // 2
+
+def disc_to_square_elliptical(coords):
+	u, v = coords
+	# Implements "Elliptical Grid Mapping" from https://arxiv.org/ftp/arxiv/papers/1509/1509.06344.pdf
+	assert -1 <= u <= 1
+	assert -1 <= v <= 1
+
+	x = (math.sqrt(2 + (u ** 2) - (v ** 2) + 2 * math.sqrt(2) * u) / 2) \
+			- (math.sqrt(2 + (u ** 2) - (v ** 2) - 2 * math.sqrt(2) * u) / 2)
+	y = (math.sqrt(2 - (u ** 2) + (v ** 2) + 2 * math.sqrt(2) * v) / 2) \
+			- (math.sqrt(2 - (u ** 2) + (v ** 2) - 2 * math.sqrt(2) * v) / 2)
+
+	assert -1 <= x <= 1, x
+	assert -1 <= y <= 1, y
+
+	return (x, y)
+
+def sgn(x):
+	# signum function
+	if x < 0:
+		return - 1
+	elif x == 0:
+		return 0
+	else:
+		return 1
+
+def disc_to_square_squircle(coords):
+	u, v = coords
+	# Implements "FG-Squircular Mapping" from https://arxiv.org/ftp/arxiv/papers/1509/1509.06344.pdf
+	assert -1 <= u <= 1
+	assert -1 <= v <= 1
+
+	sqrt_part = math.sqrt(u ** 2 + v ** 2 - math.sqrt((u ** 2 + v ** 2) * (u ** 2 + v ** 2 - 4 * u ** 2 * v ** 2)))
+
+	if u == 0 or v == 0:
+		x = u
+		y = v
+	else:
+		x = (sgn(u * v) / (v * math.sqrt(2))) * sqrt_part
+		y = (sgn(u * v) / (u * math.sqrt(2))) * sqrt_part
+
+	assert -1 <= x <= 1, x
+	assert -1 <= y <= 1, y
+
+	return (x, y)
+
+disc_to_square = disc_to_square_elliptical
+
+def normalise(coords, lim):
+	x, y = coords
+
+	return (((x / lim) * 2) - 1, ((y / lim) * 2) - 1)
+
+def denormalise(coords, lim):
+	u, v = coords
+
+	return (lim * (u + 1)  / 2, lim * (v + 1)  / 2)
+
+def length(x, y, radius):
+	# Returns distance of x and y from the centre of the image, where the image centre
+	# is the origin of a circle of radius 'radius'
+	return math.sqrt((x - radius) ** 2 + (y - radius) ** 2)
+
+def distort(filename):
+	source = Image.open(filename)
+	source = source.resize((DIAMETER, DIAMETER), Image.BILINEAR)
+	source = source.convert(mode='RGB')
+
+	dest = Image.new('RGB', (DIAMETER, DIAMETER))
+
+	for u in range(0, DIAMETER):
+		for v in range(0, DIAMETER):
+			if length(u, v, RADIUS) >= RADIUS:
+				# Outside the circle
+				colour = 0
+			else:
+				disc_coord = disc_to_square(normalise((u, v), DIAMETER))
+				x, y = denormalise(disc_coord, DIAMETER)
+				colour = source.getpixel((int(x), int(y)))
+
+			dest.putpixel((u, v), colour)
+
+	dest = dest.convert(mode='1', dither=Image.NONE)
+	return dest
+
+def main():
+	parser = argparse.ArgumentParser()
+	parser.add_argument('input', help='input filename')
+	parser.add_argument('output', help='output filename')
+	args = parser.parse_args()
+
+	result = distort(args.input)
+	result.save(args.output)
+
+if __name__ == '__main__':
+	main()
+

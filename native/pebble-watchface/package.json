@@ -1,0 +1,47 @@
+{
+  "name": "sotaface",
+  "author": "wzdd",
+  "version": "1.0.0",
+  "keywords": ["pebble-app"],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "State of the Art",
+    "uuid": "6ef48eb3-1a87-4213-bd6f-d9977ba107d1",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "basalt",
+      "chalk"
+    ],
+    "watchapp": {
+      "watchface": true
+    },
+    "messageKeys": [
+      "dummy"
+    ],
+    "resources": {
+      "media": [
+		  {"type": "raw",
+		  "name": "state_1bit",
+		  "file": "state.1bit"},
+
+	  	  {"type": "bitmap",
+		  "name": "state_bmp",
+		  "file": "state.png"},
+
+	  	  {"type": "bitmap",
+		  "name": "of_bmp",
+		  "file": "of.png"},
+
+	  	  {"type": "bitmap",
+		  "name": "the_bmp",
+		  "file": "the.png"},
+
+	  	  {"type": "bitmap",
+		  "name": "art_bmp",
+		  "file": "art.png"}
+	  ]
+    }
+  }
+}

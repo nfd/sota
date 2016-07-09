@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+
+import argparse
+import math
+import zlib
+import struct
+
+from PIL import Image
+
+def to_raw(filename):
+	source = Image.open(filename)
+
+	out = []
+	current = 0
+	count = 0
+
+	for b in source.getdata():
+		assert isinstance(b, int)
+		current |= (1 if b else 0)
+		count += 1
+
+		if count == 8:
+			out.append(current)
+			current = count = 0
+		else:
+			current <<= 1
+
+	return bytes(out), source.size
+
+SIGNATURE = bytes(ord(b) for b in 'img1')
+
+def main():
+	parser = argparse.ArgumentParser()
+	parser.add_argument('input', help='input filename')
+	parser.add_argument('output', help='output filename')
+	args = parser.parse_args()
+
+	result, size = to_raw(args.input)
+	with open(args.output, "wb") as h:
+		h.write(SIGNATURE)
+		h.write(struct.pack('<HH', *size))
+		h.write(zlib.compress(result))
+
+if __name__ == '__main__':
+	main()
+
