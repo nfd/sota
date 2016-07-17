@@ -6,7 +6,7 @@
 
 #include "graphics.h"
 #include "anim.h"
-#include "background.h"
+#include "scene.h"
 #include "choreography.h"
 #include "sound.h"
 #include "files.h"
@@ -17,8 +17,6 @@
 #define OPT_HELP 2
 #define OPT_MS 3
 #define OPT_NOSOUND 4
-
-extern struct backend_interface_struct g_backend; // defined in the specific backend
 
 struct option options[] = {
 	{"fullscreen", no_argument, NULL, OPT_FULLSCREEN},
@@ -69,7 +67,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	if(g_backend.init(&g_backend, fullscreen) == false) {
+	if(backend_init(fullscreen) == false) {
 		fprintf(stderr, "couldn't init backend\n");
 	}
 
@@ -104,7 +102,7 @@ int main(int argc, char **argv) {
 
 	graphics_init();
 	anim_init();
-	background_init();
+	scene_init();
 
 	choreography_run_demo(start_ms);
 
@@ -144,6 +142,6 @@ int main(int argc, char **argv) {
 	graphics_shutdown();
 	sound_deinit();
 	files_deinit();
-	g_backend.shutdown();
+	backend_shutdown();
 }
 

@@ -7,7 +7,7 @@
 #include "files.h"
 #include "graphics.h"
 #include "anim.h"
-#include "background.h"
+#include "scene.h"
 #include "sound.h"
 #include "iff.h"
 #include "font.h"
@@ -177,17 +177,16 @@ bool choreography_init()
 
 static void cmd_clear(struct choreography_clear *clear)
 {
+	/* TODO maybe just update the choreograph commands instead, so that they take a mask */
 	if(clear->plane == 0xff) {
-		for(int i = 0; i < 5; i++) {
-			graphics_planar_clear(i);
-		}
-	} else {
-		graphics_planar_clear(clear->plane);
-	}
+		for(int i = 0; i < 5; i++)
+			planar_clear(&backend_bitplane[i]);
+	} else 
+		planar_clear(&backend_bitplane[clear->plane]);
 }
 
 static void cmd_palette(struct choreography_palette *palette) {
-	graphics_set_palette(palette->count, palette->values);
+	backend_set_palette(palette->count, palette->values);
 }
 
 static void cmd_alternate_palette(struct choreography_alternate_palette *alternate) {
@@ -203,7 +202,7 @@ static void cmd_alternate_palette(struct choreography_alternate_palette *alterna
 static void cmd_use_alternate_palette(struct choreography_use_alternate_palette *alternate) {
 	uint32_t *src = alternate->alternate_idx == 0 ? state.fade_from : state.fade_to;
 
-	graphics_set_palette(32, src);
+	backend_set_palette(32, src);
 }
 
 static void _fade_to(int start_ms, int end_ms, int count, uint32_t *palette)
@@ -212,7 +211,7 @@ static void _fade_to(int start_ms, int end_ms, int count, uint32_t *palette)
 	state.fade_end_ms = end_ms;
 	state.fade_count = count;
 
-	graphics_get_palette(32, state.fade_from);
+	backend_get_palette(32, state.fade_from);
 	memcpy(state.fade_to, palette, count * sizeof(uint32_t));
 
 	if(count < 32) {
@@ -226,19 +225,18 @@ static void cmd_fadeto(struct choreography_fadeto *fadeto) {
 
 static void cmd_anim(struct choreography_anim *anim) {
 	// Unload the current animation if it's different.
-	// TODO get rid of the mallocs and frees in this function! (And stop using the disk...)
 	if(state.current_animation_info != NULL && state.current_animation_info->data_file != anim->data_file) {
 		anim_destroy(state.current_animation);
 	}
 
-	state.current_animation = anim_load(anim->index_file, anim->data_file);
+	state.current_animation = anim_load(anim->index_file, anim->data_file, 0);
 	state.current_animation_info = anim;
 
 	if(state.current_animation == NULL) {
 		fprintf(stderr, "Couldn't load animation %x\n", anim->data_file);
 	}
 
-	anim_set_bitplane(anim->bitplane);
+	anim_set_bitplane(&backend_bitplane[anim->bitplane]);
 	anim_set_xor(anim->xor);
 }
 
@@ -260,14 +258,17 @@ static void cmd_mod(struct choreography_mod *mod) {
 static void cmd_ilbm(struct choreography_ilbm *ilbm) {
 	// we re-use the fade-to palette for the image palette
 	// TODO display_type is ignored
-	iff_display(ilbm->file_idx, 0, 0, graphics_width(), graphics_height(), &(state.fade_count), state.fade_to);
+	struct LoadedIff iff;
+
+	iff_load(ilbm->file_idx, &iff);
+	iff_display(&iff, 0, 0, window_width, window_height, &(state.fade_count), state.fade_to);
 
 	if(ilbm->fade_in_ms == 0) {
-		graphics_set_palette(state.fade_count, state.fade_to);
+		backend_set_palette(state.fade_count, state.fade_to);
 		state.fade_count = 0; 
 	} else {
 		/* lerp to palette */
-		graphics_get_palette(32, state.fade_from);
+		backend_get_palette(32, state.fade_from);
 
 		state.fade_start_ms = ilbm->header.start_ms;
 		state.fade_end_ms = ilbm->header.start_ms + ilbm->fade_in_ms;
@@ -292,24 +293,24 @@ static void cmd_starteffect(int ms, struct choreography_starteffect *effect) {
 		case EFFECT_NOTHING:
 			break;
 		case EFFECT_SPOTLIGHTS:
-			background_init_spotlights();
-			state.effect_tick = background_spotlights_tick;
-			state.effect_deinit = background_deinit_spotlights;
+			scene_init_spotlights();
+			state.effect_tick = scene_spotlights_tick;
+			state.effect_deinit = scene_deinit_spotlights;
 			break;
 		case EFFECT_VOTEVOTEVOTE:
-			background_init_votevotevote(effect->effect_data, state.fade_from, state.fade_to);
-			state.effect_tick = background_votevotevote_tick;
-			state.effect_deinit = background_deinit_votevotevote;
+			scene_init_votevotevote(effect->effect_data, state.fade_from, state.fade_to);
+			state.effect_tick = scene_votevotevote_tick;
+			state.effect_deinit = scene_deinit_votevotevote;
 			break;
 		case EFFECT_DELAYEDBLIT:
-			background_init_delayedblit();
-			state.effect_tick = background_delayedblit_tick;
-			state.effect_deinit = background_deinit_delayedblit;
+			scene_init_delayedblit();
+			state.effect_tick = scene_delayedblit_tick;
+			state.effect_deinit = scene_deinit_delayedblit;
 			break;
 		case EFFECT_COPPERPASTELS:
-			background_init_copperpastels();
-			state.effect_tick = background_copperpastels_tick;
-			state.effect_deinit = background_deinit_copperpastels;
+			scene_init_copperpastels();
+			state.effect_tick = scene_copperpastels_tick;
+			state.effect_deinit = scene_deinit_copperpastels;
 			break;
 		default:
 			fprintf(stderr, "Unknown effect %d ignored\n", effect->effect_num);
@@ -410,7 +411,7 @@ static void run(int ms) {
 	if(state.fade_count != 0) {
 		if(ms > state.fade_end_ms) {
 			// we're done with this palette fade
-			graphics_set_palette(state.fade_count, state.fade_to);
+			backend_set_palette(state.fade_count, state.fade_to);
 			state.fade_count = 0;
 		} else {
 			graphics_lerp_palette(state.fade_count, state.fade_from, state.fade_to, ms - state.fade_start_ms, state.fade_end_ms - state.fade_start_ms);
@@ -433,7 +434,7 @@ static void skip_to_start_ms(int ms) {
 				break;
 			case CMD_FADETO: {
 				struct choreography_fadeto *fadeto = (struct choreography_fadeto *)pos;
-				graphics_set_palette(fadeto->count, fadeto->values);
+				backend_set_palette(fadeto->count, fadeto->values);
 				break;
 			 }
 		}
@@ -446,25 +447,25 @@ void choreography_run_demo(int ms)
 	skip_to_start_ms(ms);
 
 	bool keepgoing = true;
-	uint64_t starttime = backend->getTimeMS();
+	uint64_t starttime = backend_get_time_ms();
 
 	/* If 'ms' is initially >0, backdate startime */
 	starttime -= ms;
 
 	while(keepgoing) {
-		uint64_t frametime = backend->getTimeMS();
+		uint64_t frametime = backend_get_time_ms();
 		ms = frametime - starttime;
 
 		create_new_state(ms);
 		run(ms);
 
-		int64_t time_remaining_this_frame = MS_PER_FRAME - (backend->getTimeMS() - frametime);
+		int64_t time_remaining_this_frame = MS_PER_FRAME - (backend_get_time_ms() - frametime);
 
 		//anim_draw(anim, i);
 		//background_concentric_circles_tick(i);
-		graphics_planar_render();
+		backend_render();
 
-		keepgoing = backend->shouldDisplayNextFrame(time_remaining_this_frame);
+		keepgoing = backend_should_display_next_frame(time_remaining_this_frame);
 	}
 }
 

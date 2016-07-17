@@ -1,6 +1,8 @@
 #include <stdbool.h>
 #include <inttypes.h>
 
+struct Bitplane;
+
 bool font_init();
 bool font_load(int file_idx, uint32_t startchar, uint32_t numchars, uint16_t *positions);
 void font_uninit();

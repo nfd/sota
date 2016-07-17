@@ -3,32 +3,29 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
+#include <strings.h>
 #include <stdlib.h>
 
 #include "graphics.h"
 #include "backend.h"
-
-extern struct backend_interface_struct g_backend;
-
-/* Current palette */
-uint32_t palette[32];
+#include "minmax.h"
 
 /* Data related to the polygon fill algorithm. Must be initialised because it depends on the height. */
 struct poly_elem {
 	float xcurr;
-	int ymax;
+	int16_t ymax;
 	float grad_recip;
 	struct poly_elem *prev;
 	// original vertex info
-	int ymin;
-	int xmin;
+	int16_t ymin;
+	int16_t xmin;
 };
 
 struct poly_elem **edge_table;
 
 int graphics_init() {
 	// edge_table is used by the scanline polygon rendering algorithm
-	edge_table = g_backend.malloc(g_backend.height * sizeof(struct poly_elem *));
+	edge_table = backend_reserve_memory(window_height * sizeof(struct poly_elem *));
 	if(edge_table == NULL) {
 		perror("edge_table");
 		return -1;
@@ -38,23 +35,8 @@ int graphics_init() {
 }
 
 int graphics_shutdown() {
-	g_backend.free(edge_table);
-	edge_table = NULL;
-
+	// backend will free allocated memory automatically.
 	return 0;
-}
-
-void graphics_set_palette(size_t num_elements, uint32_t *elements) {
-	memcpy(palette, elements, num_elements * sizeof(uint32_t));
-	for(int i = num_elements; i < 32; i++) {
-		palette[i] = 0xff000000;
-	}
-}
-
-void graphics_get_palette(size_t num_elements, uint32_t *elements) {
-	num_elements = min(num_elements, 32);
-
-	memcpy(elements, palette, num_elements * sizeof(uint32_t));
 }
 
 static inline uint32_t lerp_byte(int idx, uint32_t byte_from, uint32_t byte_to, int current_step, int total_steps)
@@ -78,10 +60,10 @@ void graphics_lerp_palette(size_t num_elements, uint32_t *from, uint32_t *to, in
 		return;
 
 	for(int i = 0; i < num_elements; i++) {
-		palette[i] = (lerp_byte(3, from[i], to[i], current_step, total_steps) << 24)
+		backend_set_palette_element(i, (lerp_byte(3, from[i], to[i], current_step, total_steps) << 24)
 			| (lerp_byte(2, from[i], to[i], current_step, total_steps) << 16)
 			| (lerp_byte(1, from[i], to[i], current_step, total_steps) << 8)
-			| (lerp_byte(0, from[i], to[i], current_step, total_steps));
+			| (lerp_byte(0, from[i], to[i], current_step, total_steps)));
 	}
 }
 
@@ -95,7 +77,6 @@ static inline void planar_putpixel(int bitplane_idx, int x, int y)
 
 /* Heart of everything! */
 
-#define MAX_LINES 1024
 static struct poly_elem line_info[MAX_LINES];
 static struct poly_elem *active_list[MAX_LINES];
 static int next_active_list = 0;
@@ -123,7 +104,7 @@ static int active_list_comparator(const void *lhs, const void *rhs) {
 	return 0;
 }
 
-void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *data, float scalex, float scaley, int xofs, int yofs, int bitplane_idx, bool xor)
+void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *data, float scalex, float scaley, int xofs, int yofs, struct Bitplane *bitplane, bool xor)
 {
 	/* Polygon fill algorithm */
 	// The following tutorial was most helpful:
@@ -136,11 +117,11 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 	// is an index into the line_info table.
 	int next_line_info = 0;
 	int i;
-	int global_ymin = g_backend.height;
+	int global_ymin = window_height;
 	int global_ymax = 0;
 
 	/* Clear edge table */
-	memset(edge_table, 0, g_backend.height * sizeof(struct poly_elem *));
+	memset(edge_table, 0, window_height * sizeof(struct poly_elem *));
 
 	/* Fill edge_table and line_info*/
 	for(i=0; i < (num_vertices * 2); i+= 2) {
@@ -170,11 +151,11 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 			tmp = x0; x0 = x1; x1 = tmp;
 		}
 
-		y0 = min(max(0, y0), g_backend.height - 1);
-		y1 = max(min(g_backend.height - 1, y1), 0);
+		y0 = min(max(0, y0), window_height - 1);
+		y1 = max(min(window_height - 1, y1), 0);
 
-		x0 = min(max(0, x0), g_backend.width - 1);
-		x1 = max(min(g_backend.width - 1, x1), 0);
+		x0 = min(max(0, x0), window_width - 1);
+		x1 = max(min(window_width - 1, x1), 0);
 
 		if(y0 < global_ymin)
 			global_ymin = y0; // highest point of the polygon.
@@ -221,7 +202,7 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 
 			if(is_drawing) {
 				// TODO: this sometimes results in lines where prev_x = next_x - 2. Figure out why.
-				g_backend.planar_line_horizontal(bitplane_idx, y + yofs, xofs + prev_x, xofs + next_x, xor);
+				planar_line_horizontal(bitplane, y + yofs, xofs + prev_x, xofs + next_x, xor);
 			}
 
 			if((!is_vertex) || (active_list[i]->ymax == y)) {
@@ -248,11 +229,95 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 	}
 }
 
-/* TODO: Backend draw cmds are now window-only, so the horizontal and vertical line commands
- * should move back into here...
-*/
+static inline void planar_line_horizontal_xor(int start_x, int end_x, uint32_t *data, uint32_t *end_data)
+{
+	uint32_t start = 0xffffffffUL >> (start_x % 32);
+	uint32_t end = 0xffffffffUL << (32 - (end_x % 32));
 
-void draw_thick_circle(int xc, int yc, int radius, int thickness, int bitplane_idx) {
+	if(data == end_data) {
+		/* The entire line fits in a word. */
+		*data ^= (start & end);
+	} else {
+		/* First part: portion of a byte, drawing from LSB upwards. */
+		*data++ ^= start;
+
+		/* Second part: complete bytes */
+		while(data < end_data)
+			*data++ ^= 0xffffffffUL;
+
+		/* Third part: portion of a byte, drawing from MSB downwards. */
+		*data ^= end;
+	}
+}
+
+static inline void planar_line_horizontal_or(int start_x, int end_x, uint32_t *data, uint32_t *end_data)
+{
+	uint32_t start = 0xffffffffUL >> (start_x % 32);
+	uint32_t end = 0xffffffffUL << (32 - (end_x % 32));
+
+	if(data == end_data) {
+		/* The entire line fits in a word. */
+		*data |= (start & end);
+	} else {
+		/* First part: portion of a byte, drawing from LSB upwards. */
+		*data++ |= start;
+
+		/* Second part: complete bytes */
+		while(data < end_data)
+			*data++ = 0xffffffffUL;
+
+		/* Third part: portion of a byte, drawing from MSB downwards. */
+		*data |= end;
+	}
+}
+
+void planar_line_horizontal(struct Bitplane *plane, int y, int start_x, int end_x, bool xor)
+{
+	y = min(max(y, 0), plane->height - 1);
+	start_x = max(min(start_x, plane->width - 1), 0);
+	end_x = min(max(end_x, 0), plane->width - 1);
+
+	if(start_x > end_x)
+		return;
+
+	uint32_t *data = (uint32_t *)(plane->data + y * plane->stride) + (start_x / 32);
+	uint32_t *end_data = (uint32_t *)(plane->data + y * plane->stride) + (end_x / 32);
+
+	if(xor) {
+		planar_line_horizontal_xor(start_x, end_x, data, end_data);
+	} else {
+		planar_line_horizontal_or(start_x, end_x, data, end_data);
+	}
+}
+
+void planar_line_vertical(struct Bitplane *plane, int x, int start_y, int end_y, bool xor)
+{
+	x = min(max(x, 0), plane->width - 1);
+	start_y = max(min(start_y, plane->height - 1), 0);
+	end_y = min(max(end_y, 0), plane->height - 1);
+
+	if(start_y > end_y)
+		return;
+
+	uint8_t *data = plane->data;
+	uint8_t pen = 1 << (x % 8);
+	
+	data += (start_y * plane->stride) + (x / 8);
+
+	if (xor) {
+		for(int length = end_y - start_y; length; length--) {
+			*data ^= pen;
+			data += plane->stride;
+		}
+	} else {
+		for(int length = end_y - start_y; length; length--) {
+			*data |= pen;
+			data += plane->stride;
+		}
+	}
+}
+
+void planar_draw_thick_circle(struct Bitplane *bitplane, int xc, int yc, int radius, int thickness) {
 	if(radius <= 0)
 		return;
 
@@ -263,14 +328,14 @@ void draw_thick_circle(int xc, int yc, int radius, int thickness, int bitplane_i
     int errinner = 1 - xinner;
 
 	while(xouter >= y) {
-		g_backend.planar_line_horizontal(bitplane_idx, yc + y, xc + xinner, xc + xouter, false);
-		g_backend.planar_line_vertical(bitplane_idx, xc + y,  yc + xinner, yc + xouter, false);
-		g_backend.planar_line_horizontal(bitplane_idx, yc + y, xc - xouter, xc - xinner, false);
-		g_backend.planar_line_vertical(bitplane_idx, xc - y,  yc + xinner, yc + xouter, false);
-		g_backend.planar_line_horizontal(bitplane_idx, yc - y, xc - xouter, xc - xinner, false);
-		g_backend.planar_line_vertical(bitplane_idx, xc - y,  yc - xouter, yc - xinner, false);
-		g_backend.planar_line_horizontal(bitplane_idx, yc - y, xc + xinner, xc + xouter, false);
-		g_backend.planar_line_vertical(bitplane_idx, xc + y,  yc - xouter, yc - xinner, false);
+		planar_line_horizontal(bitplane, yc + y, xc + xinner, xc + xouter, false);
+		planar_line_vertical(bitplane, xc + y,  yc + xinner, yc + xouter, false);
+		planar_line_horizontal(bitplane, yc + y, xc - xouter, xc - xinner, false);
+		planar_line_vertical(bitplane, xc - y,  yc + xinner, yc + xouter, false);
+		planar_line_horizontal(bitplane, yc - y, xc - xouter, xc - xinner, false);
+		planar_line_vertical(bitplane, xc - y,  yc - xouter, yc - xinner, false);
+		planar_line_horizontal(bitplane, yc - y, xc + xinner, xc + xouter, false);
+		planar_line_vertical(bitplane, xc + y,  yc - xouter, yc - xinner, false);
 
 		y++;
 
@@ -294,19 +359,26 @@ void draw_thick_circle(int xc, int yc, int radius, int thickness, int bitplane_i
 	}
 }
 
-#if 0
+void planar_clear(struct Bitplane *plane)
+{
+	bzero(plane->data_start, plane->stride * plane->height);
+}
+
 void graphics_bitplane_blit(int plane_from, int plane_to, int sx, int sy, int w, int h, int dx, int dy)
 {
-	int src_offset = (bitplane_width * sy) + sx;
-	int dst_offset = (bitplane_width * dy) + dx;
+	int src_stride = backend_bitplane[plane_from].stride;
+	int dst_stride = backend_bitplane[plane_to].stride;
 
-	uint8_t *src = plane[plane_from] + src_offset;
-	uint8_t *dst = plane[plane_to]   + dst_offset;
+	int src_offset = (src_stride * sy) + sx;
+	int dst_offset = (dst_stride * dy) + dx;
+
+	uint8_t *src = backend_bitplane[plane_from].data + src_offset;
+	uint8_t *dst = backend_bitplane[plane_to].data   + dst_offset;
 
 	for(int y = 0; y < h; y++) {
 		memcpy(dst, src, w);
-		src += bitplane_width;
-		dst += bitplane_width;
+		src += src_stride;
+		dst += dst_stride;
 	}
 }
 
@@ -319,6 +391,5 @@ void graphics_blit(int mask, int sx, int sy, int w, int h, int dx, int dy)
 		}
 	}
 }
-#endif
 
 

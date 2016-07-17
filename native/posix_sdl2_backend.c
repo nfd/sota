@@ -1,20 +1,33 @@
 /* A backend implementation for Unix-like systems with SDL2. */
 
+// for real-time clock stuff
+#define _POSIX_C_SOURCE 199309L
+
 #include <SDL2/SDL.h>
 #include <inttypes.h>
 #include <stdbool.h>
 #include <time.h>
 #include <sys/time.h>
+#include <assert.h>
 
 #include "backend.h"
+#include "minmax.h"
 
 SDL_Window *window;
 SDL_Renderer *renderer;
 SDL_Texture *texture; // which we will update every frame.
 int window_width, window_height;
-uint32_t *framebuffer;  /* size window_width * window_height ( * 4) */
 
-static uint64_t get_time_ms()
+/* Current palette */
+uint32_t palette[32];
+
+uint32_t *framebuffer;
+
+// The bitplanes
+uint8_t *bitplane_pool_start, *bitplane_pool_next, *bitplane_pool_end;
+struct Bitplane backend_bitplane[5];
+
+uint64_t backend_get_time_ms()
 {
 #ifdef NO_POSIX_REALTIME_CLOCKS
 	struct timeval tv;
@@ -32,7 +45,7 @@ static uint64_t get_time_ms()
 }
 
 
-static bool should_display_next_frame(int64_t time_remaining_this_frame)
+bool backend_should_display_next_frame(int64_t time_remaining_this_frame)
 {
 	if(time_remaining_this_frame > 0) {
 		SDL_Event event;
@@ -48,104 +61,70 @@ static bool should_display_next_frame(int64_t time_remaining_this_frame)
 	return true;
 }
 
-/* Graphics handling.
- *
- * In the SDL port, this is managed by writing to several "bit planes" and then combining them 
- * before display.
-*/
-static void planar_line_horizontal(int bitplane_idx, int y, int start_x, int end_x, bool xor)
-{
-	y = min(max(y, 0), bitplane_height - 1);
-	start_x = max(min(start_x, bitplane_width - 1), 0);
-	end_x = min(max(end_x, 0), bitplane_width - 1);
-
-	if(start_x > end_x)
-		return;
-
-	uint8_t *bitplane = plane[bitplane_idx];
-	uint8_t pen = 1 << bitplane_idx;
-	
-	bitplane += (y * bitplane_width) + start_x;
-
-	if(xor) {
-		for(int length = end_x - start_x; length; length--) {
-			*bitplane++ ^= pen;
-		}
-	} else {
-		for(int length = end_x - start_x; length; length--) {
-			*bitplane++ = pen;
-		}
-	}
-}
-
-static void planar_line_vertical(int bitplane_idx, int x, int start_y, int end_y, bool xor)
-{
-	x = min(max(x, 0), bitplane_width - 1);
-	start_y = max(min(start_y, bitplane_height - 1), 0);
-	end_y = min(max(end_y, 0), bitplane_height - 1);
-
-	if(start_y > end_y)
-		return;
-
-	uint8_t *bitplane = plane[bitplane_idx];
-	uint8_t pen = 1 << bitplane_idx;
-	
-	bitplane += (start_y * bitplane_width) + x;
-
-	if (xor) {
-		for(int length = end_y - start_y; length; length--) {
-			*bitplane ^= pen;
-			bitplane += bitplane_width;
-		}
-	} else {
-		for(int length = end_y - start_y; length; length--) {
-			*bitplane = pen;
-			bitplane += bitplane_width;
-		}
-	}
-}
-
-static void graphics_planar_render()
+void backend_render()
 {
 	//SDL_RenderPresent(renderer);
-	uint8_t *plane_idx_0 = plane[0] + plane_offset[0];
-	uint8_t *plane_idx_1 = plane[1] + plane_offset[1];
-	uint8_t *plane_idx_2 = plane[2] + plane_offset[2];
-	uint8_t *plane_idx_3 = plane[3] + plane_offset[3];
-	uint8_t *plane_idx_4 = plane[4] + plane_offset[4];
+	uint32_t *plane_idx_0 = (uint32_t *)backend_bitplane[0].data;
+	uint32_t *plane_idx_1 = (uint32_t *)backend_bitplane[1].data;
+	uint32_t *plane_idx_2 = (uint32_t *)backend_bitplane[2].data;
+	uint32_t *plane_idx_3 = (uint32_t *)backend_bitplane[3].data;
+	uint32_t *plane_idx_4 = (uint32_t *)backend_bitplane[4].data;
 
 	int fb_idx = 0;
 
-	float copper_divisor = ((float)window_width) / 320.0 * 8.0;
-
 	for(int y = 0; y < window_height; y++) {
-		int this_copper, last_copper = -1;
+		int x = 0;
+		while(x < window_width) {
+			uint32_t plane0 = *plane_idx_0++; // we always have at least 2 bitplanes (TODO?)
+			uint32_t plane1 = *plane_idx_1++; 
+			uint32_t plane2 = plane_idx_2 ? *plane_idx_2++ : 0;
+			uint32_t plane3 = plane_idx_3 ? *plane_idx_3++ : 0;
+			uint32_t plane4 = plane_idx_4 ? *plane_idx_4++ : 0;
 
-		for(int x = 0; x < window_width; x++) {
-			if(copper_effect_handler != NULL) {
-				this_copper = x / copper_divisor;
-				if(this_copper > last_copper) {
-					int copper_y = y * 256 / window_height;
+			// Turn 32 bits from each plane into 32 pixels.
+			unsigned bit;
+			for(bit = 0x80000000UL; bit > 0x800000UL; bit >>= 1) {
+				framebuffer[fb_idx + x] = palette[
+					  ((plane0 & bit) ? 1 : 0)
+					| ((plane1 & bit) ? 2 : 0)
+					| ((plane2 & bit) ? 4 : 0)
+					| ((plane3 & bit) ? 8 : 0)
+					| ((plane4 & bit) ? 16 : 0)];
 
-					(copper_effect_handler)(this_copper, copper_y, palette);
-					last_copper = this_copper;
-				}
+				x++;
 			}
+			for(; bit > 0x8000; bit >>= 1) {
+				framebuffer[fb_idx + x] = palette[
+					  ((plane0 & bit) ? 1 : 0)
+					| ((plane1 & bit) ? 2 : 0)
+					| ((plane2 & bit) ? 4 : 0)
+					| ((plane3 & bit) ? 8 : 0)
+					| ((plane4 & bit) ? 16 : 0)];
 
-			// TODO this is pretty horrible, should go planar.
-			uint8_t colour = (*(plane_idx_0 + x) ? 1 : 0)|
-				(*(plane_idx_1 + x) ? 2 : 0) |
-				(*(plane_idx_2 + x) ? 4 : 0) |
-				(*(plane_idx_3 + x) ? 8 : 0) |
-				(*(plane_idx_4 + x) ? 16: 0);
-			framebuffer[fb_idx + x] = palette[colour];
+				x++;
+			}
+			for(; bit > 0x80; bit >>= 1) {
+				framebuffer[fb_idx + x] = palette[
+					  ((plane0 & bit) ? 1 : 0)
+					| ((plane1 & bit) ? 2 : 0)
+					| ((plane2 & bit) ? 4 : 0)
+					| ((plane3 & bit) ? 8 : 0)
+					| ((plane4 & bit) ? 16 : 0)];
+
+				x++;
+			}
+			for(; bit; bit >>= 1) {
+				framebuffer[fb_idx + x] = palette[
+					  ((plane0 & bit) ? 1 : 0)
+					| ((plane1 & bit) ? 2 : 0)
+					| ((plane2 & bit) ? 4 : 0)
+					| ((plane3 & bit) ? 8 : 0)
+					| ((plane4 & bit) ? 16 : 0)];
+
+				x++;
+			}
 		}
 
-		plane_idx_0 += bitplane_width;
-		plane_idx_1 += bitplane_width;
-		plane_idx_2 += bitplane_width;
-		plane_idx_3 += bitplane_width;
-		plane_idx_4 += bitplane_width;
 		fb_idx += window_width;
 	}
 
@@ -154,7 +133,8 @@ static void graphics_planar_render()
 	SDL_RenderPresent(renderer);
 }
 
-static bool init(struct backend_interface_struct *backend, bool fullscreen)
+
+bool backend_init(bool fullscreen)
 {
 	/* Graphics initialisation */
 	if(SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO) != 0) {
@@ -181,10 +161,6 @@ static bool init(struct backend_interface_struct *backend, bool fullscreen)
 
 	SDL_GetWindowSize(window, &window_width, &window_height);
 
-	backend->width = window_width;
-	backend->height = window_height;
-	backend->bitplane_stride = window_width / 8;
-
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 	if(renderer == NULL) {
 		fprintf(stderr, "SDL_CreateRenderer: %s\n", SDL_GetError());
@@ -198,10 +174,6 @@ static bool init(struct backend_interface_struct *backend, bool fullscreen)
 	}
 
 	framebuffer = malloc(window_width * window_height * sizeof(uint32_t));
-	if(framebuffer == NULL) {
-		perror("framebuffer");
-		return false;
-	}
 
 	// no mouse
 	SDL_ShowCursor(SDL_DISABLE);
@@ -209,32 +181,99 @@ static bool init(struct backend_interface_struct *backend, bool fullscreen)
 	SDL_RenderClear(renderer);
 	SDL_RenderPresent(renderer);
 
+	// reserve memory for a pool of bitplane allocations equal to 5 windows' worth of data.
+	bitplane_pool_start = bitplane_pool_next = malloc(window_width * window_height * 5);
+	if(bitplane_pool_start == NULL) {
+		fprintf(stderr, "couldn't allocate bitplane memory\n");
+		return false;
+	}
+
+	bitplane_pool_end = bitplane_pool_start + (window_width * window_height * 5);
+
+	// Initially all bitplanes point to a single screen-wide display inside the pool.
+	backend_allocate_standard_bitplanes();
+
 	return true;
 }
 
-static void get_window_dimensions(int *width, int *height) {
-	*width = window_width;
-	*height = window_height;
+struct Bitplane *backend_allocate_bitplane(int idx, int width, int height)
+{
+	assert(backend_bitplane[idx].data_start == NULL);
+
+	int stride = width / 8;
+
+	backend_bitplane[idx].data_start = backend_bitplane[idx].data = bitplane_pool_next;
+	bitplane_pool_next += (height * stride);
+	
+	if(bitplane_pool_next > bitplane_pool_end) {
+		fprintf(stderr, "Bitplane alloc overflow\n");
+		abort();
+	}
+
+	backend_bitplane[idx].width = width;
+	backend_bitplane[idx].height = height;
+	backend_bitplane[idx].stride = stride;
+
+	return &backend_bitplane[idx];
 }
 
-static void shutdown()
+void backend_allocate_standard_bitplanes() {
+	backend_delete_bitplanes();
+
+	for(int i = 0; i < 5; i++) {
+		backend_allocate_bitplane(i, window_width, window_height);
+	}
+}
+
+void backend_delete_bitplanes() {
+	for(int i = 0; i < 5; i++) {
+		backend_bitplane[i].data_start = backend_bitplane[i].data = NULL;
+	}
+
+	bitplane_pool_next = bitplane_pool_start;
+}
+
+void backend_copy_bitplane(struct Bitplane *dst, struct Bitplane *src)
 {
+	assert(dst->height == src->height && dst->stride == src->stride);
+
+	memcpy(dst->data_start, src->data_start, src->stride * src->height);
+}
+
+void *backend_reserve_memory(size_t amt)
+{
+	void *mem = malloc(amt);
+	if(mem == NULL) {
+		perror("malloc");
+		abort();
+	}
+
+	return mem;
+}
+
+void backend_shutdown()
+{
+	free(framebuffer);
+
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
 	SDL_Quit();
 }
 
-struct backend_interface_struct g_backend = {
-	.init = init,
-	.shutdown = shutdown,
-	.get_time_ms = get_time_ms,
-	.should_display_next_frame = should_display_next_frame,
-	.planar_line_horizontal = planar_line_horizontal,
-	.planar_line_vertical = planar_line_vertical,
-	.render = graphics_planar_render,
-};
+void backend_get_palette(size_t num_elements, uint32_t *elements) {
+	num_elements = min(num_elements, 32);
 
-struct backend_interface_struct *get_posix_backend() {
-	return &posix_sdl2_backend;
+	memcpy(elements, palette, num_elements * sizeof(uint32_t));
+}
+
+void backend_set_palette(size_t num_elements, uint32_t *elements) {
+	memcpy(palette, elements, num_elements * sizeof(uint32_t));
+	for(int i = num_elements; i < 32; i++) {
+		palette[i] = 0xff000000;
+	}
+}
+
+void backend_set_palette_element(int idx, uint32_t element) {
+	palette[idx] = element;
 }
 

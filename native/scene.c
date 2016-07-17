@@ -10,8 +10,7 @@
 #include "iff.h"
 #include "font.h"
 #include "backend.h"
-
-extern struct backend_interface_struct g_backend;
+#include "scene.h"
 
 #define VOTEVOTEVOTE_DISPLAY_MS 40
 
@@ -68,72 +67,66 @@ static void precalculate_pastels_brush() {
 	}
 }
 
-void background_init()
+void scene_init()
 {
-	scale_x = g_backend.width / 256;
-	scale_y = g_backend.height / 256;
+	scale_x = window_width / 256;
+	scale_y = window_height / 256;
 	global_scale = scale_x > scale_y? scale_x: scale_y;
 
 	precalculate_pastels_brush();
 }
 
-bool background_init_spotlights() {
+bool scene_init_spotlights() {
 	// spot 0 trails all over the display
-	bitplanes[0].width = g_backend.width * 2;
-	bitplanes[0].height = g_backend.height * 2;
-	bitplanes[0].stride = bitplanes[0].width / 8;
-	bitplanes[0].offsetx = bitplanes[0].offsety = 0;
-	bitplanes[0].idx = 1;
-	bitplanes[0].data = g_backend.malloc(bitplanes[0].width * bitplanes[0].height / 8);
-	if(bitplanes[0].data == NULL) 
-		return false;
+	backend_delete_bitplanes();
+	backend_allocate_bitplane(0, window_width, window_height); // animation bitplane
+	backend_allocate_bitplane(1, window_width * 2, window_height * 2);
 
 	// spot 1 moves up and down, reusing the same data.
-	bitplanes[1].width = bitplanes[0].width;
-	bitplanes[1].height = bitplanes[0].height;
-	bitplanes[1].stride = bitplanes[0].stride;
-	bitplanes[1].offsetx = bitplanes[1].offsety = 0;
-	bitplanes[1].idx = 2;
-	bitplanes[1].data = bitplanes[0].data;
+	backend_bitplane[2].width = backend_bitplane[1].width;
+	backend_bitplane[2].height = backend_bitplane[1].height;
+	backend_bitplane[2].stride = backend_bitplane[1].stride;
+	backend_bitplane[2].data = backend_bitplane[0].data;
+	backend_bitplane[2].data_start = backend_bitplane[1].data_start;
 
 	/* Scale backgrounds sensibly */
 	int thickness = 4 * global_scale;
 	int gap = (2 * thickness) / 3;
 
-	int half_bitplane_width = g_backend.width / 2;
-	int half_bitplane_height = g_backend.height / 2;
+	int half_bitplane_width = window_width / 2;
+	int half_bitplane_height = window_height / 2;
 
 	int longest_distance = sqrtf(half_bitplane_width * half_bitplane_width + half_bitplane_height * half_bitplane_height);
 
 	for(int radius = thickness; radius < longest_distance; radius+= (thickness + gap)) {
-		draw_thick_circle(bitplanes[0].data, half_bitplane_width, half_bitplane_height, radius, thickness);
+		planar_draw_thick_circle(&bitplanes[0], half_bitplane_width, half_bitplane_height, radius, thickness);
 	}
 
 	return true;
 }
 
-void background_deinit_spotlights() {
-	g_backend.free(bitplanes[0].data);
-	g_backend.free(bitplanes[1].data);
+void scene_deinit_spotlights() {
 }
 
-void background_spotlights_tick(int cnt) {
+void scene_spotlights_tick(int cnt) {
 
 	// Paths:
 	// 1 trails from bottom left all over the screen.
 	// 2 moves from bottom left to top left and back.
 	//
 	// We do everything on a nominal 256x256 scale and then scale up.
-	bitplanes[0].offsetx = (128 + (128 * sinf(((float)cnt) / 800))) * scale_x;
-	bitplanes[0].offsety = (128 + (128 * sinf(((float)cnt) / 2000))) * scale_y;
+	int offsetx, offsety;
 
-	bitplanes[1].offsetx = (30 * scale_x);
-	bitplanes[1].offsety = (128 + (128 * sinf(1.0 + ((float)cnt) / 1200))) * scale_y;
+	offsetx = (128 + (128 * sinf(((float)cnt) / 800))) * scale_x;
+	offsety = (128 + (128 * sinf(((float)cnt) / 2000))) * scale_y;
+	backend_bitplane[1].data = backend_bitplane[1].data_start + (offsety + backend_bitplane[1].stride) + offsetx;
 
-	g_backend->blit(g_backend.width, g_backend.height, BLIT_MODE_AND, 2, bitplanes);
+	offsetx = (30 * scale_x);
+	offsety = (128 + (128 * sinf(1.0 + ((float)cnt) / 1200))) * scale_y;
+	backend_bitplane[2].data = backend_bitplane[2].data_start + (offsety + backend_bitplane[2].stride) + offsetx;
 }
 
-void background_init_votevotevote(void *effect_data, uint32_t *palette_a, uint32_t *palette_b)
+void scene_init_votevotevote(void *effect_data, uint32_t *palette_a, uint32_t *palette_b)
 {
 	votevotevote_last_palette = 0; // light palette
 	current_text_block = effect_data;
@@ -151,7 +144,7 @@ void background_init_votevotevote(void *effect_data, uint32_t *palette_a, uint32
 	//printf("counts %d %d %d %d\n", votevotevote_topline_count, votevotevote_midline_count, votevotevote_botline_count, current_text_block->num_entries);
 }
 
-void background_deinit_votevotevote()
+void scene_deinit_votevotevote()
 {
 	// nothing to do
 }
@@ -165,7 +158,7 @@ char *find_text_for_idx(int idx, int *length_out)
 	return ((char *)current_text_block->entries) + offset;
 }
 
-void background_votevotevote_tick(int ms)
+void scene_votevotevote_tick(int ms)
 {
 	if(votevotevote_last_ms + VOTEVOTEVOTE_DISPLAY_MS > ms)
 		return;
@@ -189,15 +182,13 @@ void background_votevotevote_tick(int ms)
 	char *text;
 
 	if(votevotevote_last_palette == 1)
-		graphics_set_palette(32, votevotevote_palette_a);
+		backend_set_palette(32, votevotevote_palette_a);
 	else
-		graphics_set_palette(32, votevotevote_palette_b);
+		backend_set_palette(32, votevotevote_palette_b);
 
 	votevotevote_last_palette = 1 - votevotevote_last_palette;
 
-	graphics_clear_visible();
-
-	int y = ((graphics_height() / 2) - (font_height / 2)) - font_height;
+	int y = ((window_height / 2) - (font_height / 2)) - font_height;
 
 	text = find_text_for_idx(top_text_idx, &text_length);
 	font_centre(text_length, text, y);
@@ -220,32 +211,37 @@ void background_votevotevote_tick(int ms)
 
 
 /* Delayed blit: every N ms, blit blitplane n over bitplane n + 1 */
-void background_init_delayedblit()
+void scene_init_delayedblit()
 {
+	backend_delete_bitplanes();
+	backend_allocate_bitplane(0, window_width, window_height);
+	backend_allocate_bitplane(1, window_width, window_height);
+	backend_allocate_bitplane(2, window_width, window_height);
+	backend_allocate_bitplane(3, window_width, window_height);
+	backend_allocate_bitplane(4, window_width, window_height);
+
 	delayed_blit_delay = 80;
 	delayed_blit_next_blit = 0;
-	bitplane_width = graphics_bitplane_width();
-	bitplane_height = graphics_bitplane_height();
 }
 
-void background_delayedblit_tick(int ms)
+void scene_delayedblit_tick(int ms)
 {
 	if(ms < delayed_blit_next_blit)
 		return;
 
 	for(int plane_idx = 4; plane_idx > 0; plane_idx--)
-		graphics_bitplane_blit(plane_idx - 1, plane_idx, 0, 0, bitplane_width, bitplane_height, 0, 0);
+		backend_copy_bitplane(&backend_bitplane[plane_idx - 1], &backend_bitplane[plane_idx]);
 
 	delayed_blit_next_blit += delayed_blit_delay;
 }
 
-void background_deinit_delayedblit()
+void scene_deinit_delayedblit()
 {
 }
 
 
 /* Copper effects: x is between 0 and 40 (every 8 pixels on a 320-width display), y is between 0 and 256. */
-static void background_copperpastels_do_copper_effect(int x, int y, uint32_t *palette)
+static void scene_copperpastels_do_copper_effect(int x, int y, uint32_t *palette)
 {
 	x = (x * COPPER_PASTELS_WIDTH) / 40;
 	y = (y * COPPER_PASTELS_HEIGHT) / 256;
@@ -253,33 +249,17 @@ static void background_copperpastels_do_copper_effect(int x, int y, uint32_t *pa
 	palette[0] = copperpastels.colours[(y * COPPER_PASTELS_WIDTH) + x];
 }
 
-void background_init_copperpastels()
+void scene_init_copperpastels()
 {
-	/* We have colour spotlights, yellow, blue, green, and red, which take turns entering and exiting the display.
-	 * The background is a blend between these spotlights and white (the default colour).
-	 *
-	 * We only ever show two spotlights at once.
-	 * 
-	 * The spotlights are very granular, so we can calculate them once (e.g. on a 16x18 grid)
-	 * and then just reference that grid when blitting. We can update the grid less frequently,
-	 * say five times a second.
-	*/
-	graphics_copper_effect_register(&background_copperpastels_do_copper_effect);
-	copperpastels.next_update_ms = 0;
+	// TODO
 }
 
-void background_copperpastels_tick(int ms)
+void scene_copperpastels_tick(int ms)
 {
-	if(ms >= copperpastels.next_update_ms) {
-		memset(copperpastels.colours, 0xff, COPPER_PASTELS_WIDTH * COPPER_PASTELS_HEIGHT * sizeof(uint32_t));
-
-		copperpastels.next_update_ms = ms + COPPER_PASTELS_UPDATE_MS;
-	}
 }
 
-void background_deinit_copperpastels()
+void scene_deinit_copperpastels()
 {
-	graphics_copper_effect_unregister();
 }
 
 

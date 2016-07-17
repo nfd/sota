@@ -17,6 +17,8 @@
 #include "files.h"
 #include "graphics.h"
 #include "iff.h"
+#include "backend.h"
+#include "minmax.h"
 
 #define IFF_FORM 0x464f524d  /* "FORM" */
 #define IFF_ILBM 0x494c424d  /* "ILBM" */
@@ -24,17 +26,6 @@
 #define IFF_CMAP 0x434d4150  /* "CMAP" */
 #define IFF_BODY 0x424f4459  /* "BODY" */
 
-struct BitmapHeader {
-	uint16_t w, h;             /* raster width & height in pixels      */
-	int16_t  x, y;             /* pixel position for this image        */
-	uint8_t  nPlanes;          /* # source bitplanes                   */
-	uint8_t  masking;
-	uint8_t  compression;
-	uint8_t  pad1;             /* unused; ignore on read, write as 0   */
-	uint16_t transparentColor; /* transparent "color number" (sort of) */
-	uint8_t  xAspect, yAspect; /* pixel aspect, a ratio width : height */
-	int16_t  pageWidth, pageHeight; /* source "page" size in pixels    */
-} __attribute__((__packed__));
 
 struct BitmapHeader currentHeader;
 
@@ -77,22 +68,8 @@ static uint8_t *iff_find_chunk(uint8_t *data, uint8_t *end, uint32_t chunk_name,
 	return NULL;
 }
 
-static inline void expand_one(int8_t src, int8_t *dst, uint8_t pen)
+static int8_t *expand_scanline_byterun1(int8_t *src, uint16_t wanted, int8_t *dst)
 {
-	dst[0] = src & 0x80 ? pen : 0;
-	dst[1] = src & 0x40 ? pen : 0;
-	dst[2] = src & 0x20 ? pen : 0;
-	dst[3] = src & 0x10 ? pen : 0;
-	dst[4] = src & 0x08 ? pen : 0;
-	dst[5] = src & 0x04 ? pen : 0;
-	dst[6] = src & 0x02 ? pen : 0;
-	dst[7] = src & 0x01 ? pen : 0;
-}
-
-static int8_t *expand_scanline_byterun1(int8_t *src, uint16_t wanted, int8_t *dst, int8_t plane)
-{
-	uint8_t pen = 1 << plane;
-
 	while(wanted) {
 		int8_t b = *src++;
 
@@ -102,8 +79,7 @@ static int8_t *expand_scanline_byterun1(int8_t *src, uint16_t wanted, int8_t *ds
 			wanted -= remaining;
 
 			for(; remaining; remaining--) {
-				expand_one(*src++, dst, pen);
-				dst += 8;
+				*dst++ = *src++;
 			}
 		} else if (b != -128) {
 			/* replicate the next byte -n + 1 times */
@@ -113,8 +89,7 @@ static int8_t *expand_scanline_byterun1(int8_t *src, uint16_t wanted, int8_t *ds
 			uint8_t replicateme = *src++;
 
 			for(; remaining; remaining--) {
-				expand_one(replicateme, dst, pen);
-				dst += 8;
+				*dst++ = replicateme;
 			}
 		}
 	}
@@ -122,14 +97,11 @@ static int8_t *expand_scanline_byterun1(int8_t *src, uint16_t wanted, int8_t *ds
 	return src;
 }
 
-static int8_t *expand_scanline(int8_t *src, uint16_t wanted, int8_t *dst, int8_t plane)
+static int8_t *expand_scanline(int8_t *src, uint16_t wanted, int8_t *dst)
 {
 	// This is untested
-	uint8_t pen = 1 << plane;
-
 	for(; wanted; wanted--) {
-		expand_one(*src++, dst, pen);
-		dst += 8;
+		*dst++ = *src++;
 	}
 	return src;
 }
@@ -137,6 +109,8 @@ static int8_t *expand_scanline(int8_t *src, uint16_t wanted, int8_t *dst, int8_t
 static void scale_scanline(int8_t *src, uint16_t src_w, uint8_t *dst, uint16_t dst_w)
 {
 	/* This is from Dr. Dobbs, http://www.drdobbs.com/image-scaling-with-bresenham/184405045#l1 */
+
+	// TODO must adapt this to deal with bits not bytes
 
 	int16_t num_pixels = dst_w;
 	int16_t int_part = src_w / dst_w;
@@ -156,43 +130,35 @@ static void scale_scanline(int8_t *src, uint16_t src_w, uint8_t *dst, uint16_t d
 }
 
 
-static void iff_stretch(uint16_t src_w, uint16_t src_h, uint16_t dst_w, uint16_t dst_h, uint16_t dst_stride, uint16_t nPlanes, int8_t *src, uint8_t **dst_plane, uint8_t compression)
+static void iff_stretch(uint16_t src_w, uint16_t src_h, uint16_t dst_x, uint16_t dst_y, uint16_t dst_w, uint16_t dst_h, uint16_t nPlanes, int8_t *src, uint8_t compression)
 {
 	uint16_t row_bytes = ((src_w + 15) >> 4) << 1;
-	uint16_t decompressed_stride = row_bytes * 8;
+	int8_t row_byte_data[decompressed_stride]; // NB this will overflow the stack on Pebble
 
-	int8_t decompressed[nPlanes * decompressed_stride];
-
-	int targetRows = dst_h;
+	int end_y = dst_y + dst_h;
 	int intPart = (src_h / dst_h);
 	int fractPart = (src_h % dst_h);
 	int e = 0;
 
 	int src_row = 0, src_prev_row = -1;
-	
-	while(targetRows-- > 0) {
-		int8_t *decompressed_scanline = decompressed;
 
+	while(dst_y <= end_y) {
 		if(src_row != src_prev_row) {
-
 			for(int plane = 0; plane < nPlanes; plane++) {
 				if(compression == 1) {
-					src = expand_scanline_byterun1(src, row_bytes, decompressed_scanline, plane);
+					src = expand_scanline_byterun1(src, row_bytes, row_byte_data);
 				} else {
-					src = expand_scanline(src, row_bytes, decompressed_scanline, plane);
+					src = expand_scanline(src, row_bytes, row_byte_data);
 				}
-				decompressed_scanline += decompressed_stride;
+
+				/* Write the scanline to the destination */
+				scale_scanline(row_byte_data, src_w, backend_bitplane[plane].data + (dst_y * backend_bitplane[plane].stride), dst_w);
 			}
+		} else {
+			/* replicate all bitplanes of previous row (dest to dest copy): TODO */
+			//backend_blit_native(dst_x, dst_y - 1, dst_w, dst_h, dst_x, dst_y, 0xff, 0xff, display, display);
 		}
 
-		decompressed_scanline = decompressed;
-		for(int plane = 0; plane < nPlanes; plane++) {
-			//memcpy(dst_plane[plane], decompressed_scanline[plane], src_w);
-			scale_scanline(decompressed_scanline, src_w, dst_plane[plane], dst_w);
-
-			dst_plane[plane] += dst_stride;
-			decompressed_scanline += decompressed_stride;
-		}
 		src_prev_row = src_row;
 
 		src_row += intPart;
@@ -201,72 +167,79 @@ static void iff_stretch(uint16_t src_w, uint16_t src_h, uint16_t dst_w, uint16_t
 			e -= dst_h;
 			src_row ++;
 		}
+
+		dst_y ++;
 	}
 }
 
-
-bool iff_display(int file_idx, int dst_x, int dst_y, int dst_w, int dst_h, uint32_t *num_colours, uint32_t *palette_out)
+bool iff_load(int file_idx, struct LoadedIff *iff)
 {
-	/* Doesn't change palette, but will write it to palette_out if that argument is not null. */
-
 	ssize_t size;
 	uint8_t *data = file_get(file_idx, &size);
 	if(data == NULL) {
-		fprintf(stderr, "iff_display: data\n");
+		fprintf(stderr, "iff_load: data\n");
 		return false;
 	}
 
 	uint8_t *end = data + size;
 
-	struct BitmapHeader *bmhd = (struct BitmapHeader *)iff_find_chunk(data, end, IFF_BMHD, NULL);
-	if(bmhd == NULL) {
-		fprintf(stderr, "iff_display: bmhd\n");
+	iff->bmhd = (struct BitmapHeader *)iff_find_chunk(data, end, IFF_BMHD, NULL);
+	if(iff->bmhd == NULL) {
+		fprintf(stderr, "iff_load: bmhd\n");
 		return false;
 	}
 
-	if(bmhd->masking) {
+	if(iff->bmhd->masking) {
 		fprintf(stderr, "iff_display: can't handle masked images\n"); // it's not hard, I'm just lazy
 		return false;
 	}
 
-	uint8_t *body = iff_find_chunk(data, end, IFF_BODY, NULL);
-	if(body == NULL) {
-		fprintf(stderr, "iff_display: body\n");
+	iff->body = (int8_t *)iff_find_chunk(data, end, IFF_BODY, NULL);
+	if(iff->body == NULL) {
+		fprintf(stderr, "iff_load: body\n");
 		return false;
 	}
 
+	iff->cmap = iff_find_chunk(data, end, IFF_CMAP, &iff->cmap_count);
+	iff->cmap_count /= 3;
+
+	return true;
+}
+
+void iff_get_dimensions(struct LoadedIff *iff, uint16_t *w, uint16_t *h)
+{
+	*w = be16toh(iff->bmhd->w);
+	*h = be16toh(iff->bmhd->h);
+}
+
+
+bool iff_display(struct LoadedIff *iff, int dst_x, int dst_y, int dst_w, int dst_h, uint32_t *num_colours, uint32_t *palette_out)
+{
+	/* Doesn't change palette, but will write it to palette_out if that argument is not null. */
+
 	//uint16_t dst_w = graphics_width();
 	//uint16_t dst_h = graphics_height();
-	uint16_t dst_stride = graphics_bitplane_stride();
-	uint16_t src_w = be16toh(bmhd->w);
-	uint16_t src_h = be16toh(bmhd->h);
+	//uint16_t dst_stride = graphics_bitplane_stride();
+	uint16_t src_w = be16toh(iff->bmhd->w);
+	uint16_t src_h = be16toh(iff->bmhd->h);
 
 	//printf("iff %d x %d\n", be16toh(bmhd->w), be16toh(bmhd->h));
 
 	// ILBMs can be 24-bit if they like!
-	uint16_t nplanes = min(bmhd->nPlanes, 5);
+	uint16_t nplanes = min(iff->bmhd->nPlanes, 5);
 
-	// destination bitplanes
-	uint32_t plane_offset = (dst_y * dst_stride) + dst_x;
-	uint8_t *dst_plane[5];
-	for(int i = 0; i < 5; i++)
-		dst_plane[i] = graphics_bitplane_get(i) + plane_offset;
-
-	if(bmhd->compression == 0)
+	if(iff->bmhd->compression == 0)
 		fprintf(stderr, "uncompressed expand untested\n");
 
-	iff_stretch(src_w, src_h, dst_w, dst_h, dst_stride, nplanes, (int8_t *)body, dst_plane, bmhd->compression);
+	iff_stretch(src_w, src_h, dst_x, dst_y, window_width, window_height, nplanes, iff->body, iff->bmhd->compression);
 
 	/* Copy the palette if requested */
-	uint32_t cmap_count;
-	uint8_t *cmap = iff_find_chunk(data, end, IFF_CMAP, &cmap_count);
-	cmap_count /= 3;
-
 	if(num_colours)
-		*num_colours = cmap_count;
+		*num_colours = iff->cmap_count;
 
+	uint8_t *cmap = iff->cmap;
 	if(palette_out && cmap) {
-		for(int idx = 0; idx < cmap_count; idx++) {
+		for(int idx = 0; idx < iff->cmap_count; idx++) {
 			palette_out[idx] = 0xff000000
 				| (cmap[0] << 16)
 				| (cmap[1] << 8)

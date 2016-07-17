@@ -21,11 +21,12 @@ float anim_scale_y;
 int anim_offset_x;
 int anim_offset_y;
 
-int anim_bitplane;
+struct Bitplane *anim_bitplane;
 bool anim_xor;
 
-extern struct backend_interface_struct g_backend;
+#define MAX_SIMULTANEOUS_ANIM 2
 
+struct animation current_anim[MAX_SIMULTANEOUS_ANIM];
 uint8_t current_tween[MAX_TWEENED_VERTICES * 2];
 
 void anim_init()
@@ -37,16 +38,16 @@ void anim_init()
 	 * TODO we'll want to change this on a scene-by-scene basis I think: it's better to have the figure fullscreen
 	 * and slightly cropped than uncropped but far away.
 	*/
-	anim_scale_x = ((float)g_backend.width) / ANIM_SOURCE_WIDTH;
-	anim_scale_y = ((float)g_backend.height) / ANIM_SOURCE_HEIGHT;
+	anim_scale_x = ((float)window_width) / ANIM_SOURCE_WIDTH;
+	anim_scale_y = ((float)window_height) / ANIM_SOURCE_HEIGHT;
 
-	anim_offset_x = (g_backend.width / 2) - ( (ANIM_SOURCE_WIDTH * anim_scale_x) / 2);
-	anim_offset_y = g_backend.height - (ANIM_SOURCE_HEIGHT * anim_scale_y);
+	anim_offset_x = (window_width / 2) - ( (ANIM_SOURCE_WIDTH * anim_scale_x) / 2);
+	anim_offset_y = window_height - (ANIM_SOURCE_HEIGHT * anim_scale_y);
 
-	anim_bitplane = 0;
+	anim_bitplane = &backend_bitplane[0];
 }
 
-void anim_set_bitplane(int bitplane) {
+void anim_set_bitplane(struct Bitplane *bitplane) {
 	anim_bitplane = bitplane;
 }
 
@@ -70,7 +71,7 @@ void anim_draw(struct animation *anim, int frame_idx)
 		return;
 	}
 
-	g_backend.planar_clear(anim_bitplane);
+	planar_clear(anim_bitplane);
 
 	for(uint8_t i = 0; i < num_objects; i++) {
 		data = anim_draw_object(data);
@@ -151,19 +152,15 @@ uint8_t *lerp_tween(uint8_t *tween_from, uint8_t *tween_to, int tween_t, int twe
 	return current_tween;
 }
 
-struct animation *anim_load(int idx_file, int data_file) {
-	static char buf[256];
-
-	struct animation *anim = malloc(sizeof(struct animation));
-	if(anim == NULL)
-		return NULL;
+struct animation *anim_load(int idx_file, int data_file, int anim_idx) {
+	struct animation *anim = &current_anim[anim_idx];
 
 	anim->indices = anim->data = NULL;
 
 	ssize_t indices_size;
 	anim->indices = file_get(idx_file, &indices_size);
 	if(anim->indices == NULL) {
-		fprintf(stderr, "load fail: %s\n", buf);
+		fprintf(stderr, "anim load fail\n");
 		anim_destroy(anim);
 		return NULL;
 	}
@@ -180,8 +177,6 @@ struct animation *anim_load(int idx_file, int data_file) {
 }
 
 int anim_destroy(struct animation *anim) {
-	free(anim);
-
 	return 0;
 }
 
