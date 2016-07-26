@@ -8,22 +8,20 @@
 
 #include "graphics.h"
 #include "iff.h"
-#include "font.h"
 #include "backend.h"
 #include "scene.h"
+#include "minmax.h"
 
-#define VOTEVOTEVOTE_DISPLAY_MS 40
+#define VOTEVOTEVOTE_DISPLAY_MS 60
 
-static int scale_x, scale_y;
-static int global_scale;
+static float scale_x, scale_y;
+static float global_scale;
 
 static int votevotevote_last_palette = 0;
 static int votevotevote_last_ms;
 static int votevotevote_topline_count, votevotevote_midline_count, votevotevote_botline_count; // # texts available for each line
 static int votevotevote_top, votevotevote_mid, votevotevote_bot; // the previous choice
 static uint32_t *votevotevote_palette_a, *votevotevote_palette_b;
-
-static struct Bitplane bitplanes[2];
 
 int delayed_blit_next_blit = 0; // ms
 int delayed_blit_delay = 40; // ms
@@ -69,8 +67,8 @@ static void precalculate_pastels_brush() {
 
 void scene_init()
 {
-	scale_x = window_width / 256;
-	scale_y = window_height / 256;
+	scale_x = (float)window_width / 256;
+	scale_y = (float)window_height / 256;
 	global_scale = scale_x > scale_y? scale_x: scale_y;
 
 	precalculate_pastels_brush();
@@ -90,16 +88,13 @@ bool scene_init_spotlights() {
 	backend_bitplane[2].data_start = backend_bitplane[1].data_start;
 
 	/* Scale backgrounds sensibly */
-	int thickness = 4 * global_scale;
+	int thickness = max(4 * global_scale, 4);
 	int gap = (2 * thickness) / 3;
 
-	int half_bitplane_width = window_width / 2;
-	int half_bitplane_height = window_height / 2;
-
-	int longest_distance = sqrtf(half_bitplane_width * half_bitplane_width + half_bitplane_height * half_bitplane_height);
+	int longest_distance = sqrtf(window_width * window_width + window_height * window_height);
 
 	for(int radius = thickness; radius < longest_distance; radius+= (thickness + gap)) {
-		planar_draw_thick_circle(&bitplanes[0], half_bitplane_width, half_bitplane_height, radius, thickness);
+		planar_draw_thick_circle(&backend_bitplane[1], window_width, window_height, radius, thickness);
 	}
 
 	return true;
@@ -119,15 +114,18 @@ void scene_spotlights_tick(int cnt) {
 
 	offsetx = (128 + (128 * sinf(((float)cnt) / 800))) * scale_x;
 	offsety = (128 + (128 * sinf(((float)cnt) / 2000))) * scale_y;
-	backend_bitplane[1].data = backend_bitplane[1].data_start + (offsety + backend_bitplane[1].stride) + offsetx;
+	backend_bitplane[1].data = backend_bitplane[1].data_start + (offsety * backend_bitplane[1].stride) + (offsetx / 8);
 
 	offsetx = (30 * scale_x);
 	offsety = (128 + (128 * sinf(1.0 + ((float)cnt) / 1200))) * scale_y;
-	backend_bitplane[2].data = backend_bitplane[2].data_start + (offsety + backend_bitplane[2].stride) + offsetx;
+	backend_bitplane[2].data = backend_bitplane[2].data_start + (offsety * backend_bitplane[2].stride) + (offsetx / 8);
 }
 
 void scene_init_votevotevote(void *effect_data, uint32_t *palette_a, uint32_t *palette_b)
 {
+	backend_delete_bitplanes();
+	backend_allocate_standard_bitplanes();
+
 	votevotevote_last_palette = 0; // light palette
 	current_text_block = effect_data;
 
@@ -149,7 +147,7 @@ void scene_deinit_votevotevote()
 	// nothing to do
 }
 
-char *find_text_for_idx(int idx, int *length_out)
+static char *find_text_for_idx(int idx, int *length_out)
 {
 	int offset = current_text_block->entries[idx];
 	if(length_out)
@@ -162,6 +160,11 @@ void scene_votevotevote_tick(int ms)
 {
 	if(votevotevote_last_ms + VOTEVOTEVOTE_DISPLAY_MS > ms)
 		return;
+
+	// TODO we only need to clear the bounding box.
+	for(int i = 0; i < 4; i++) {
+		planar_clear(&backend_bitplane[i]);
+	}
 
 	int top_text_idx = random() % votevotevote_topline_count;
 	int mid_text_idx = random() % votevotevote_midline_count;
@@ -177,7 +180,7 @@ void scene_votevotevote_tick(int ms)
 	if(bot_text_idx == votevotevote_bot) 
 		bot_text_idx = (bot_text_idx + 1) % votevotevote_botline_count;
 
-	int font_height = font_get_height();
+	int font_height = backend_font_get_height();
 	int text_length;
 	char *text;
 
@@ -191,17 +194,17 @@ void scene_votevotevote_tick(int ms)
 	int y = ((window_height / 2) - (font_height / 2)) - font_height;
 
 	text = find_text_for_idx(top_text_idx, &text_length);
-	font_centre(text_length, text, y);
+	backend_font_draw(text_length, text, -1, y);
 
 	y += font_height;
 
 	text = find_text_for_idx(mid_text_idx + votevotevote_topline_count, &text_length);
-	font_centre(text_length, text, y);
+	backend_font_draw(text_length, text, -1, y);
 
 	y += font_height;
 
 	text = find_text_for_idx(bot_text_idx + votevotevote_topline_count + votevotevote_midline_count, &text_length);
-	font_centre(text_length, text, y);
+	backend_font_draw(text_length, text, -1, y);
 	
 	votevotevote_last_ms = ms;
 	votevotevote_top = top_text_idx;
@@ -214,11 +217,7 @@ void scene_votevotevote_tick(int ms)
 void scene_init_delayedblit()
 {
 	backend_delete_bitplanes();
-	backend_allocate_bitplane(0, window_width, window_height);
-	backend_allocate_bitplane(1, window_width, window_height);
-	backend_allocate_bitplane(2, window_width, window_height);
-	backend_allocate_bitplane(3, window_width, window_height);
-	backend_allocate_bitplane(4, window_width, window_height);
+	backend_allocate_standard_bitplanes();
 
 	delayed_blit_delay = 80;
 	delayed_blit_next_blit = 0;
@@ -230,7 +229,7 @@ void scene_delayedblit_tick(int ms)
 		return;
 
 	for(int plane_idx = 4; plane_idx > 0; plane_idx--)
-		backend_copy_bitplane(&backend_bitplane[plane_idx - 1], &backend_bitplane[plane_idx]);
+		backend_copy_bitplane(&backend_bitplane[plane_idx], &backend_bitplane[plane_idx - 1]);
 
 	delayed_blit_next_blit += delayed_blit_delay;
 }

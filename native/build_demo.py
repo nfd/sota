@@ -84,6 +84,7 @@ DEMO = [
 		('after', 'clear', {'plane': 'all'}),
 		('after', 'ilbm', {'name': 'data/authors.iff', 'display': 'fullscreen', 'fadein_ms': 2000}),
 		('after', 'pause', {'ms': 3000}),
+		#('after', 'pause', {'ms': 30000}),
 
 		('after', 'fadeto', {'ms': 250, 'values': (0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff)}),
 		('after', 'ilbm', {'name': 'data/dragon.iff', 'display': 'fullscreen', 'fadein_ms': 500}),

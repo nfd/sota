@@ -39,7 +39,7 @@ void backend_allocate_standard_bitplanes();
 void backend_copy_bitplane(struct Bitplane *dst, struct Bitplane *src);
 
 /* Backend-specific startup and shutdown */
-bool backend_init(bool fullscreen); 
+bool backend_init(int width, int height, bool fullscreen); 
 void backend_shutdown();
 
 /* Return a 64-bit time value representing milliseconds. This value should be
@@ -66,6 +66,14 @@ void *backend_reserve_memory(size_t size);
 void backend_set_palette(size_t num_elements, uint32_t *elements);
 void backend_get_palette(size_t num_elements, uint32_t *elements);
 void backend_set_palette_element(int idx, uint32_t element);
+
+/* Font drawing. This is backend-specific since some backends can't
+ * load a whole-screen bitmapped font. */
+bool backend_font_load(int file_idx, uint32_t startchar, uint32_t numchars, uint16_t *positions);
+void backend_font_unload();
+// font drawing: pass -1 as x co-ordinate to centre 
+void backend_font_draw(int numchars, char *text, int x, int y);
+int backend_font_get_height();
 
 #endif // BACKEND_H
 

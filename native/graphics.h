@@ -21,7 +21,8 @@ void planar_draw_thick_circle(struct Bitplane *bitplane, int xc, int yc, int rad
 void planar_line_vertical(struct Bitplane *plane, int x, int start_y, int end_y, bool xor);
 void planar_line_horizontal(struct Bitplane *plane, int y, int start_x, int end_x, bool xor);
 void planar_clear(struct Bitplane *plane);
-void graphics_blit(int mask, int sx, int sy, int w, int h, int dx, int dy);
+void graphics_bitplane_blit(struct Bitplane *from, struct Bitplane *to, int sx, int sy, int w, int h, int dx, int dy);
+void graphics_blit(struct Bitplane from[], struct Bitplane to[], int mask, int sx, int sy, int w, int h, int dx, int dy);
 
 // copper effects
 typedef void(copper_effect)(int x, int y, uint32_t *palette);

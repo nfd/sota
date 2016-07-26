@@ -10,7 +10,6 @@
 #include "scene.h"
 #include "sound.h"
 #include "iff.h"
-#include "font.h"
 #include "backend.h"
 
 #define CMD_END 0
@@ -261,7 +260,7 @@ static void cmd_ilbm(struct choreography_ilbm *ilbm) {
 	struct LoadedIff iff;
 
 	iff_load(ilbm->file_idx, &iff);
-	iff_display(&iff, 0, 0, window_width, window_height, &(state.fade_count), state.fade_to);
+	iff_display(&iff, 0, 0, window_width, window_height, &(state.fade_count), state.fade_to, backend_bitplane);
 
 	if(ilbm->fade_in_ms == 0) {
 		backend_set_palette(state.fade_count, state.fade_to);
@@ -319,7 +318,7 @@ static void cmd_starteffect(int ms, struct choreography_starteffect *effect) {
 }
 
 static void cmd_loadfont(int ms, struct choreography_loadfont *loadfont) {
-	font_load(loadfont->file_idx, loadfont->startchar, loadfont->numchars, loadfont->positions);
+	backend_font_load(loadfont->file_idx, loadfont->startchar, loadfont->numchars, loadfont->positions);
 }
 
 // Create the state item at 'pos' without advancing it.

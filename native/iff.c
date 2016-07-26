@@ -68,14 +68,14 @@ static uint8_t *iff_find_chunk(uint8_t *data, uint8_t *end, uint32_t chunk_name,
 	return NULL;
 }
 
-static int8_t *expand_scanline_byterun1(int8_t *src, uint16_t wanted, int8_t *dst)
+static int8_t *expand_scanline_byterun1(int8_t *src, int16_t wanted, int8_t *dst)
 {
-	while(wanted) {
+	while(wanted > 0) {
 		int8_t b = *src++;
 
 		if(b > 0) {
 			/* copy the next b + 1 bytes literally */
-			int16_t remaining = ((int16_t)b) + 1;
+			int16_t remaining = min(wanted, ((int16_t)b) + 1);
 			wanted -= remaining;
 
 			for(; remaining; remaining--) {
@@ -83,7 +83,7 @@ static int8_t *expand_scanline_byterun1(int8_t *src, uint16_t wanted, int8_t *ds
 			}
 		} else if (b != -128) {
 			/* replicate the next byte -n + 1 times */
-			int16_t remaining = -b + 1;
+			int16_t remaining = min(wanted, -b + 1);
 			wanted -= remaining;
 
 			uint8_t replicateme = *src++;
@@ -106,34 +106,47 @@ static int8_t *expand_scanline(int8_t *src, uint16_t wanted, int8_t *dst)
 	return src;
 }
 
-static void scale_scanline(int8_t *src, uint16_t src_w, uint8_t *dst, uint16_t dst_w)
+static void scale_scanline(uint32_t *src, uint16_t src_w, uint32_t *dst, uint16_t dst_w)
 {
 	/* This is from Dr. Dobbs, http://www.drdobbs.com/image-scaling-with-bresenham/184405045#l1 */
-
-	// TODO must adapt this to deal with bits not bytes
-
-	int16_t num_pixels = dst_w;
 	int16_t int_part = src_w / dst_w;
 	int16_t fract_part = src_w % dst_w;
 	int16_t e = 0;
+	int src_bit = 0, dst_bit = 0;
+	uint32_t src_byte = be32toh(*src), dst_byte = 0;
 
-	while(num_pixels-- > 0) {
-		*dst++ = *src;
-		src += int_part;
+	for(int num_pixels = dst_w; num_pixels; num_pixels--) {
+		if(src_byte & (1 << (31 - src_bit))) {
+			dst_byte |= (1 << (31 - dst_bit));
+		}
+
+		dst_bit ++;
+		if(dst_bit == 32) {
+			*dst++ = htobe32(dst_byte);
+			dst_byte = dst_bit = 0;
+		}
+
+		src_bit += int_part;
 
 		e += fract_part;
 		if(e > dst_w) {
 			e -= dst_w;
-			src++;
+			src_bit++;
+		}
+
+		if(src_bit > 31) {
+			src += (src_bit / 32);
+			src_byte = be32toh(*src);
+			src_bit %= 32;
 		}
 	}
 }
 
 
-static void iff_stretch(uint16_t src_w, uint16_t src_h, uint16_t dst_x, uint16_t dst_y, uint16_t dst_w, uint16_t dst_h, uint16_t nPlanes, int8_t *src, uint8_t compression)
+static void iff_stretch(uint16_t src_w, uint16_t src_h, uint16_t dst_x, uint16_t dst_y, uint16_t dst_w, uint16_t dst_h, uint16_t nPlanes, int8_t *src, uint8_t compression, struct Bitplane *planes)
 {
-	uint16_t row_bytes = ((src_w + 15) >> 4) << 1;
-	int8_t row_byte_data[decompressed_stride]; // NB this will overflow the stack on Pebble
+	int16_t row_bytes = ((src_w + 15) >> 4) << 1;
+	int8_t row_byte_data[row_bytes]; // NB this will overflow the stack on Pebble
 
 	int end_y = dst_y + dst_h;
 	int intPart = (src_h / dst_h);
@@ -142,21 +155,28 @@ static void iff_stretch(uint16_t src_w, uint16_t src_h, uint16_t dst_x, uint16_t
 
 	int src_row = 0, src_prev_row = -1;
 
-	while(dst_y <= end_y) {
+	while(dst_y < end_y) {
 		if(src_row != src_prev_row) {
-			for(int plane = 0; plane < nPlanes; plane++) {
-				if(compression == 1) {
-					src = expand_scanline_byterun1(src, row_bytes, row_byte_data);
-				} else {
-					src = expand_scanline(src, row_bytes, row_byte_data);
-				}
+			// src_prev_row may be one or more rows behind. If it's more than one row behind then
+			// we still have to decompress the intermediate rows so we know how far to advance the
+			// pointer.
+			for(int catchup = src_row - src_prev_row; catchup; catchup--) {
+				for(int plane = 0; plane < nPlanes; plane++) {
+					if(compression == 1) {
+						src = expand_scanline_byterun1(src, row_bytes, row_byte_data);
+					} else {
+						src = expand_scanline(src, row_bytes, row_byte_data);
+					}
 
-				/* Write the scanline to the destination */
-				scale_scanline(row_byte_data, src_w, backend_bitplane[plane].data + (dst_y * backend_bitplane[plane].stride), dst_w);
+					/* Write the scanline to the destination */
+					if(catchup == 1)
+						scale_scanline((uint32_t *)row_byte_data, src_w,
+								(uint32_t *)(planes[plane].data + (dst_y * planes[plane].stride)), dst_w);
+				}
 			}
 		} else {
 			/* replicate all bitplanes of previous row (dest to dest copy): TODO */
-			//backend_blit_native(dst_x, dst_y - 1, dst_w, dst_h, dst_x, dst_y, 0xff, 0xff, display, display);
+			graphics_blit(planes, planes, 0xff, dst_x, dst_y - 1, dst_w, 1, dst_x, dst_y);
 		}
 
 		src_prev_row = src_row;
@@ -213,17 +233,11 @@ void iff_get_dimensions(struct LoadedIff *iff, uint16_t *w, uint16_t *h)
 }
 
 
-bool iff_display(struct LoadedIff *iff, int dst_x, int dst_y, int dst_w, int dst_h, uint32_t *num_colours, uint32_t *palette_out)
+bool iff_display(struct LoadedIff *iff, int dst_x, int dst_y, int dst_w, int dst_h, uint32_t *num_colours, uint32_t *palette_out, struct Bitplane *planes)
 {
 	/* Doesn't change palette, but will write it to palette_out if that argument is not null. */
-
-	//uint16_t dst_w = graphics_width();
-	//uint16_t dst_h = graphics_height();
-	//uint16_t dst_stride = graphics_bitplane_stride();
 	uint16_t src_w = be16toh(iff->bmhd->w);
 	uint16_t src_h = be16toh(iff->bmhd->h);
-
-	//printf("iff %d x %d\n", be16toh(bmhd->w), be16toh(bmhd->h));
 
 	// ILBMs can be 24-bit if they like!
 	uint16_t nplanes = min(iff->bmhd->nPlanes, 5);
@@ -231,7 +245,7 @@ bool iff_display(struct LoadedIff *iff, int dst_x, int dst_y, int dst_w, int dst
 	if(iff->bmhd->compression == 0)
 		fprintf(stderr, "uncompressed expand untested\n");
 
-	iff_stretch(src_w, src_h, dst_x, dst_y, window_width, window_height, nplanes, iff->body, iff->bmhd->compression);
+	iff_stretch(src_w, src_h, dst_x, dst_y, dst_w, dst_h, nplanes, iff->body, iff->bmhd->compression, planes);
 
 	/* Copy the palette if requested */
 	if(num_colours)

@@ -10,19 +10,26 @@
 #include "choreography.h"
 #include "sound.h"
 #include "files.h"
-#include "font.h"
+#include "iff-font.h"
 #include "posix_sdl2_backend.h"
+
+#define DEFAULT_WIDTH 640
+#define DEFAULT_HEIGHT 512
 
 #define OPT_FULLSCREEN 1
 #define OPT_HELP 2
 #define OPT_MS 3
 #define OPT_NOSOUND 4
+#define OPT_WIDTH 5
+#define OPT_HEIGHT 6
 
 struct option options[] = {
 	{"fullscreen", no_argument, NULL, OPT_FULLSCREEN},
 	{"ms", required_argument, NULL, OPT_MS},
 	{"help", no_argument, NULL, OPT_HELP},
 	{"nosound", no_argument, NULL, OPT_NOSOUND},
+	{"width", required_argument, NULL, OPT_WIDTH},
+	{"height", required_argument, NULL, OPT_HEIGHT},
 	{0, 0, 0, 0}
 };
 
@@ -39,6 +46,9 @@ int main(int argc, char **argv) {
 	bool fullscreen = false;
 	bool nosound = false;
 	int start_ms = 0;
+
+	int width = DEFAULT_WIDTH;
+	int height = DEFAULT_HEIGHT;
 
 	while(true) {
 		int opt = getopt_long(argc, argv, "", options, NULL);
@@ -62,12 +72,18 @@ int main(int argc, char **argv) {
 			case OPT_NOSOUND:
 				nosound = true;
 				break;
+			case OPT_WIDTH:
+				width = atoi(optarg);
+				break;
+			case OPT_HEIGHT:
+				height = atoi(optarg);
+				break;
 			case -1:
 				break;
 		}
 	}
 
-	if(backend_init(fullscreen) == false) {
+	if(backend_init(width, height, fullscreen) == false) {
 		fprintf(stderr, "couldn't init backend\n");
 	}
 
@@ -76,7 +92,7 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	if(font_init() == false) {
+	if(ifffont_init() == false) {
 		fprintf(stderr, "couldn't init fonts\n");
 		return 1;
 	}

@@ -2,6 +2,7 @@
 
 // for real-time clock stuff
 #define _POSIX_C_SOURCE 199309L
+#define _DEFAULT_SOURCE
 
 #include <SDL2/SDL.h>
 #include <inttypes.h>
@@ -9,9 +10,11 @@
 #include <time.h>
 #include <sys/time.h>
 #include <assert.h>
+#include <endian.h>
 
 #include "backend.h"
 #include "minmax.h"
+#include "iff-font.h"
 
 SDL_Window *window;
 SDL_Renderer *renderer;
@@ -26,6 +29,12 @@ uint32_t *framebuffer;
 // The bitplanes
 uint8_t *bitplane_pool_start, *bitplane_pool_next, *bitplane_pool_end;
 struct Bitplane backend_bitplane[5];
+
+// Set to -1 if no font loaded. If >= 0 a font
+// is loaded and the bitplanes are valid.
+int loaded_font_idx; 
+// Bespoke artisanal bitplanes just for the font.
+struct Bitplane font_bitplane[5];
 
 uint64_t backend_get_time_ms()
 {
@@ -61,7 +70,8 @@ bool backend_should_display_next_frame(int64_t time_remaining_this_frame)
 	return true;
 }
 
-void backend_render()
+// NB not used at the moment because we want to do smooth scrolling with a pixel offset.
+void backend_render_32bits()
 {
 	//SDL_RenderPresent(renderer);
 	uint32_t *plane_idx_0 = (uint32_t *)backend_bitplane[0].data;
@@ -75,11 +85,11 @@ void backend_render()
 	for(int y = 0; y < window_height; y++) {
 		int x = 0;
 		while(x < window_width) {
-			uint32_t plane0 = *plane_idx_0++; // we always have at least 2 bitplanes (TODO?)
-			uint32_t plane1 = *plane_idx_1++; 
-			uint32_t plane2 = plane_idx_2 ? *plane_idx_2++ : 0;
-			uint32_t plane3 = plane_idx_3 ? *plane_idx_3++ : 0;
-			uint32_t plane4 = plane_idx_4 ? *plane_idx_4++ : 0;
+			uint32_t plane0 = be32toh(*plane_idx_0++); // we always have at least 2 bitplanes (TODO?)
+			uint32_t plane1 = be32toh(*plane_idx_1++); 
+			uint32_t plane2 = plane_idx_2 ? be32toh(*plane_idx_2++) : 0;
+			uint32_t plane3 = plane_idx_3 ? be32toh(*plane_idx_3++) : 0;
+			uint32_t plane4 = plane_idx_4 ? be32toh(*plane_idx_4++) : 0;
 
 			// Turn 32 bits from each plane into 32 pixels.
 			unsigned bit;
@@ -133,8 +143,57 @@ void backend_render()
 	SDL_RenderPresent(renderer);
 }
 
+void backend_render()
+{
+	//SDL_RenderPresent(renderer);
+	uint8_t *plane_idx_0 = (uint8_t *)backend_bitplane[0].data;
+	uint8_t *plane_idx_1 = (uint8_t *)backend_bitplane[1].data;
+	uint8_t *plane_idx_2 = (uint8_t *)backend_bitplane[2].data;
+	uint8_t *plane_idx_3 = (uint8_t *)backend_bitplane[3].data;
+	uint8_t *plane_idx_4 = (uint8_t *)backend_bitplane[4].data;
 
-bool backend_init(bool fullscreen)
+	int fb_idx = 0;
+
+	for(int y = 0; y < window_height; y++) {
+		int bitx = 0, x = 0;
+		while(x < window_width) {
+			uint8_t plane0 = plane_idx_0[bitx]; // we always have at least 2 bitplanes (TODO?)
+			uint8_t plane1 = plane_idx_1[bitx]; 
+			uint8_t plane2 = plane_idx_2 ? plane_idx_2[bitx] : 0;
+			uint8_t plane3 = plane_idx_3 ? plane_idx_3[bitx] : 0;
+			uint8_t plane4 = plane_idx_4 ? plane_idx_4[bitx] : 0;
+
+			unsigned bit;
+			for(bit = 0x80; bit; bit >>= 1) {
+				framebuffer[fb_idx + x] = palette[
+					  ((plane0 & bit) ? 1 : 0)
+					| ((plane1 & bit) ? 2 : 0)
+					| ((plane2 & bit) ? 4 : 0)
+					| ((plane3 & bit) ? 8 : 0)
+					| ((plane4 & bit) ? 16 : 0)];
+
+				x++;
+			}
+
+			bitx++;
+		}
+
+		plane_idx_0 += backend_bitplane[0].stride;
+		plane_idx_1 += backend_bitplane[1].stride;
+		plane_idx_2 += backend_bitplane[2].stride;
+		plane_idx_3 += backend_bitplane[3].stride;
+		plane_idx_4 += backend_bitplane[4].stride;
+
+		fb_idx += window_width;
+	}
+
+	SDL_UpdateTexture(texture, NULL, framebuffer, window_width * 4);
+	SDL_RenderCopy(renderer, texture, NULL, NULL);
+	SDL_RenderPresent(renderer);
+}
+
+
+bool backend_init(int width, int height, bool fullscreen)
 {
 	/* Graphics initialisation */
 	if(SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO) != 0) {
@@ -152,7 +211,7 @@ bool backend_init(bool fullscreen)
 	if(fullscreen) {
 		window = SDL_CreateWindow("State Of The Art", 0, 0, currentMode.w, currentMode.h, SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_OPENGL);
 	} else {
-		window = SDL_CreateWindow("State Of The Art", 0, 0, 640, 512, SDL_WINDOW_OPENGL);
+		window = SDL_CreateWindow("State Of The Art", 0, 0, width, height, SDL_WINDOW_OPENGL);
 	}
 	if(window == NULL) {
 		fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
@@ -193,6 +252,9 @@ bool backend_init(bool fullscreen)
 	// Initially all bitplanes point to a single screen-wide display inside the pool.
 	backend_allocate_standard_bitplanes();
 
+	// Initially the font bitplanes are null.
+	loaded_font_idx = -1;
+
 	return true;
 }
 
@@ -228,6 +290,7 @@ void backend_allocate_standard_bitplanes() {
 void backend_delete_bitplanes() {
 	for(int i = 0; i < 5; i++) {
 		backend_bitplane[i].data_start = backend_bitplane[i].data = NULL;
+		backend_bitplane[i].width = backend_bitplane[i].height = backend_bitplane[i].stride = 0;
 	}
 
 	bitplane_pool_next = bitplane_pool_start;
@@ -275,5 +338,72 @@ void backend_set_palette(size_t num_elements, uint32_t *elements) {
 
 void backend_set_palette_element(int idx, uint32_t element) {
 	palette[idx] = element;
+}
+
+/* Fonts, using the iff-font code.
+ *
+ * Kind of annoying -- creates a separate font bitmap
+ * and blits from it.
+*/
+#define FONT_PLANES_WIDTH 320
+#define FONT_PLANES_HEIGHT 256
+bool backend_font_load(int file_idx, uint32_t startchar, uint32_t numchars, uint16_t *positions)
+{
+	/* The font is loaded directly into the bitplanes */
+	if(loaded_font_idx >= 0) {
+		backend_font_unload();
+	}
+
+	for(int i = 0; i < 5; i++) {
+		font_bitplane[i].width = FONT_PLANES_WIDTH;
+		font_bitplane[i].height = FONT_PLANES_HEIGHT;
+		font_bitplane[i].stride = FONT_PLANES_WIDTH / 8;
+		font_bitplane[i].data_start
+			= font_bitplane[i].data
+			= malloc(font_bitplane[i].height * font_bitplane[i].stride);
+		if(font_bitplane[i].data_start == NULL) {
+			fprintf(stderr, "font_load: malloc fail\n");
+			abort();
+		}
+	}
+
+	bool result = ifffont_load(file_idx, startchar, numchars,
+			positions, font_bitplane);
+
+	if(result) {
+		loaded_font_idx = file_idx;
+	}
+
+	return result;
+}
+
+void backend_font_unload()
+{
+	for(int i = 0; i < 5; i++) {
+		if(font_bitplane[i].data_start) {
+			free(font_bitplane[i].data);
+			font_bitplane[i].data = font_bitplane[i].data_start = NULL;
+			font_bitplane[i].width
+				= font_bitplane[i].height
+				= font_bitplane[i].stride 
+				= 0;
+		}
+	}
+}
+
+// font drawing: pass -1 as x co-ordinate to centre 
+void backend_font_draw(int numchars, char *text, int x, int y)
+{
+	if(x == -1) {
+		ifffont_centre(numchars, text, y, backend_bitplane);
+	} else {
+		ifffont_draw(numchars, text, x, y, backend_bitplane);
+	}
+}
+
+
+int backend_font_get_height()
+{
+	return ifffont_get_height();
 }
 

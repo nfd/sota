@@ -1,3 +1,5 @@
+#define _DEFAULT_SOURCE
+
 #include <stdio.h>
 #include <math.h>
 #include <inttypes.h>
@@ -5,6 +7,7 @@
 #include <string.h>
 #include <strings.h>
 #include <stdlib.h>
+#include <endian.h>
 
 #include "graphics.h"
 #include "backend.h"
@@ -231,8 +234,8 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 
 static inline void planar_line_horizontal_xor(int start_x, int end_x, uint32_t *data, uint32_t *end_data)
 {
-	uint32_t start = 0xffffffffUL >> (start_x % 32);
-	uint32_t end = 0xffffffffUL << (32 - (end_x % 32));
+	uint32_t start = htobe32(0xffffffffUL >> (start_x % 32));
+	uint32_t end = htobe32(0xffffffffUL << (32 - (end_x % 32)));
 
 	if(data == end_data) {
 		/* The entire line fits in a word. */
@@ -252,8 +255,8 @@ static inline void planar_line_horizontal_xor(int start_x, int end_x, uint32_t *
 
 static inline void planar_line_horizontal_or(int start_x, int end_x, uint32_t *data, uint32_t *end_data)
 {
-	uint32_t start = 0xffffffffUL >> (start_x % 32);
-	uint32_t end = 0xffffffffUL << (32 - (end_x % 32));
+	uint32_t start = htobe32(0xffffffffUL >> (start_x % 32));
+	uint32_t end = htobe32(0xffffffffUL << (32 - (end_x % 32)));
 
 	if(data == end_data) {
 		/* The entire line fits in a word. */
@@ -300,7 +303,7 @@ void planar_line_vertical(struct Bitplane *plane, int x, int start_y, int end_y,
 		return;
 
 	uint8_t *data = plane->data;
-	uint8_t pen = 1 << (x % 8);
+	uint8_t pen = 1 << (7 - (x % 8));
 	
 	data += (start_y * plane->stride) + (x / 8);
 
@@ -364,30 +367,32 @@ void planar_clear(struct Bitplane *plane)
 	bzero(plane->data_start, plane->stride * plane->height);
 }
 
-void graphics_bitplane_blit(int plane_from, int plane_to, int sx, int sy, int w, int h, int dx, int dy)
+void graphics_bitplane_blit(struct Bitplane *from, struct Bitplane *to, int sx, int sy, int w, int h, int dx, int dy)
 {
-	int src_stride = backend_bitplane[plane_from].stride;
-	int dst_stride = backend_bitplane[plane_to].stride;
+	int src_stride = from->stride;
+	int dst_stride = to->stride;
 
-	int src_offset = (src_stride * sy) + sx;
-	int dst_offset = (dst_stride * dy) + dx;
+	int src_offset = (src_stride * sy) + (sx / 8);
+	int dst_offset = (dst_stride * dy) + (dx / 8);
 
-	uint8_t *src = backend_bitplane[plane_from].data + src_offset;
-	uint8_t *dst = backend_bitplane[plane_to].data   + dst_offset;
+	uint8_t *src = from->data + src_offset;
+	uint8_t *dst = to->data   + dst_offset;
+
+	int bytes_per_row = (w + 7) / 8;
 
 	for(int y = 0; y < h; y++) {
-		memcpy(dst, src, w);
+		memcpy(dst, src, bytes_per_row);
 		src += src_stride;
 		dst += dst_stride;
 	}
 }
 
-void graphics_blit(int mask, int sx, int sy, int w, int h, int dx, int dy)
+void graphics_blit(struct Bitplane from[], struct Bitplane to[], int mask, int sx, int sy, int w, int h, int dx, int dy)
 {
 	/* copy all planes in 'mask' */
 	for(int plane_idx = 0; plane_idx < 5; plane_idx++) {
 		if((mask & (1 << plane_idx)) != 0) {
-			graphics_bitplane_blit(plane_idx, plane_idx, sx, sy, w, h, dx, dy);
+			graphics_bitplane_blit(&from[plane_idx], &to[plane_idx], sx, sy, w, h, dx, dy);
 		}
 	}
 }
