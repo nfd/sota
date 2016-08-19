@@ -4,13 +4,7 @@
 #include <stdbool.h>
 #include <inttypes.h>
 #include <stdio.h>
-
-#ifdef MAC_ENDIAN_H
-#include "mac_endian.h"
-#else
-#include <endian.h>
-#endif
-
+#include "endian_compat.h"
 #include <string.h>
 #include <stdlib.h>
 

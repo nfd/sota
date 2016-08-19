@@ -7,8 +7,7 @@
 #include <string.h>
 #include <strings.h>
 #include <stdlib.h>
-#include <endian.h>
-
+#include "endian_compat.h"
 #include "graphics.h"
 #include "backend.h"
 #include "minmax.h"

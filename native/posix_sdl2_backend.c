@@ -10,8 +10,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <assert.h>
-#include <endian.h>
-
+#include "endian_compat.h"
 #include "backend.h"
 #include "minmax.h"
 #include "iff-font.h"
