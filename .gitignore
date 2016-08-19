@@ -4,4 +4,7 @@ Spaceballs-StateOfTheArt.dms
 *.o
 native/data/*
 native/sota
-
+*.wad
+__pycache__
+.DS_Store
+Session.vim
