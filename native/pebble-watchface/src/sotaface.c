@@ -41,10 +41,6 @@ static void heap_reset() {
 	heap_allocs[0] = heap;
 }
 
-static size_t align(int amt, int align) {
-	return amt + ((align - (amt % align)) % align);
-}
-
 static void *heap_alloc(size_t size)
 {
 	if(next_alloc_ptr == MAX_ALLOC)

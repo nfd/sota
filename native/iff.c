@@ -7,12 +7,14 @@
 #include "endian_compat.h"
 #include <string.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #include "files.h"
 #include "graphics.h"
 #include "iff.h"
 #include "backend.h"
 #include "minmax.h"
+#include "align.h"
 
 #define IFF_FORM 0x464f524d  /* "FORM" */
 #define IFF_ILBM 0x494c424d  /* "ILBM" */
@@ -109,7 +111,15 @@ static void scale_scanline(uint32_t *src, uint16_t src_w, uint32_t *dst, uint16_
 	int src_bit = 0, dst_bit = 0;
 	uint32_t src_byte = be32toh(*src), dst_byte = 0;
 
+	assert(src_w % 4 == 0);
+
 	for(int num_pixels = dst_w; num_pixels; num_pixels--) {
+		if(src_bit > 31) {
+			src += (src_bit / 32);
+			src_byte = be32toh(*src);
+			src_bit %= 32;
+		}
+
 		if(src_byte & (1 << (31 - src_bit))) {
 			dst_byte |= (1 << (31 - dst_bit));
 		}
@@ -127,12 +137,6 @@ static void scale_scanline(uint32_t *src, uint16_t src_w, uint32_t *dst, uint16_
 			e -= dst_w;
 			src_bit++;
 		}
-
-		if(src_bit > 31) {
-			src += (src_bit / 32);
-			src_byte = be32toh(*src);
-			src_bit %= 32;
-		}
 	}
 }
 
@@ -140,7 +144,7 @@ static void scale_scanline(uint32_t *src, uint16_t src_w, uint32_t *dst, uint16_
 static void iff_stretch(uint16_t src_w, uint16_t src_h, uint16_t dst_x, uint16_t dst_y, uint16_t dst_w, uint16_t dst_h, uint16_t nPlanes, int8_t *src, uint8_t compression, struct Bitplane *planes)
 {
 	int16_t row_bytes = ((src_w + 15) >> 4) << 1;
-	int8_t row_byte_data[row_bytes]; // NB this will overflow the stack on Pebble
+	int8_t row_byte_data[align(row_bytes, sizeof(uint32_t))]; // NB this will overflow the stack on Pebble
 
 	int end_y = dst_y + dst_h;
 	int intPart = (src_h / dst_h);
