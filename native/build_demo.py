@@ -4,6 +4,7 @@ import urllib.request
 import urllib.parse
 import os
 import gzip
+import json
 
 from wad import Wad
 
@@ -52,16 +53,16 @@ DEMO = [
 		('after', 'clear', {'plane': 'all'}),
 		('after', 'palette', {'values': (0xff110022, 0xffffffff, 0xff110022, 0xffffffff)}),
 		('after', 'fadeto', {'ms': 2000, 'values': (0xff110022, 0xff221144, 0xff110022, 0xff110033)}),
-		('simultaneously', 'anim', {'name': 0x10800, 'from': 0, 'to': 50}),
+		('simultaneously', 'split_anim', {'name': '010800', 'from': 0, 'to': 50}),
 		#('after', 'pause', {'ms': 500}),
 		('after', 'mod', {'type': 'start', 'name': 'data/stateldr.mod'}),
 		# Girl with gun displayed inside hand
-		('after', 'anim', {'name': 0x2c00, 'from': 0, 'to': 141, 'plane': 1}),
+		('after', 'split_anim', {'name': '002c00', 'from': 0, 'to': 141, 'plane': 1}),
 		('after', 'clear', {'plane': 1}),
 		# Hand zooms out; dancing Bond girls. Frame 51 is skipped because it's weird (draws two hands almost over each other)
 		# xor is manually disabled -- this is probably also encoded in draw cmds but whatever.
-		('after', 'anim', {'name': 0x10800, 'from': 52, 'to': 145, 'xor': 0}),
-		('after', 'anim', {'name': 0x10800, 'from': 146, 'to': 334, 'xor': 1}),
+		('after', 'split_anim', {'name': '010800', 'from': 52, 'to': 145, 'xor': 0}),
+		('after', 'split_anim', {'name': '010800', 'from': 146, 'to': 334, 'xor': 1}),
 		('after', 'mod', {'type': 'stop'}),
 
 		# Title: STATE OF THE ART, credits, dragon pic
@@ -100,10 +101,10 @@ DEMO = [
 		('after', 'palette', {'values': (0xff000000, 0xff000000, 0xff117700, 0xff000000, 0xff770077, 0xff000000, 0xff771111)}),
 		('after', 'fadeto', {'ms': 1000, 'values': (0xff000000, 0xff000000, 0xff117700, 0xffdd0000, 0xff770077, 0xffdd7700, 0xff771111,
 			0xffbbbb00)}),
-		('simultaneously', 'anim', {'name': 0x67080, 'from': 0, 'to': 25}),
-		('after', 'anim', {'name': 0x67230, 'from': 0, 'to': 195}),
+		('simultaneously', 'split_anim', {'name': '067080', 'from': 0, 'to': 25}),
+		('after', 'split_anim', {'name': '067230', 'from': 0, 'to': 195}),
 		('after', 'fadeto', {'ms': 250, 'values': ()}),
-		('simultaneously', 'anim', {'name': 0x67230, 'from': 196, 'to': 209}),
+		('simultaneously', 'split_anim', {'name': '067230', 'from': 196, 'to': 209}),
 		('after', 'starteffect', {'name': 'nothing'}),
 
 		# VOTE! VOTE! VOTE!
@@ -140,61 +141,61 @@ DEMO = [
 		('after', 'starteffect', {'name': 'delayedblit'}),
 		# 1
 		('after', 'use_alternate_palette', {'idx': 0}),
-		('after', 'anim', {'name': 0x75c66, 'from': 0, 'to': 21}),
+		('after', 'split_anim', {'name': '075c66', 'from': 0, 'to': 21}),
 		('after', 'clear', {'plane': 'all'}),
 		#2
 		('after', 'use_alternate_palette', {'idx': 1}),
-		('after', 'anim', {'name': 0x77016, 'from': 0, 'to': 21}),
+		('after', 'split_anim', {'name': '077016', 'from': 0, 'to': 21}),
 		('after', 'clear', {'plane': 'all'}),
 		#3
 		('after', 'use_alternate_palette', {'idx': 0}),
-		('after', 'anim', {'name': 0x75c66, 'from': 21, 'to': 42}),
+		('after', 'split_anim', {'name': '075c66', 'from': 21, 'to': 42}),
 		('after', 'clear', {'plane': 'all'}),
 		#4: TODO CROP
 		('after', 'use_alternate_palette', {'idx': 1}),
-		('after', 'anim', {'name': 0x77016, 'from': 21, 'to': 42}),
+		('after', 'split_anim', {'name': '077016', 'from': 21, 'to': 42}),
 		('after', 'clear', {'plane': 'all'}),
 		#5
 		('after', 'use_alternate_palette', {'idx': 0}),
-		('after', 'anim', {'name': 0x78104, 'from': 0, 'to': 21}),
+		('after', 'split_anim', {'name': '078104', 'from': 0, 'to': 21}),
 		('after', 'clear', {'plane': 'all'}),
 		#6
 		('after', 'use_alternate_palette', {'idx': 1}),
-		('after', 'anim', {'name': 0x77016, 'from': 0, 'to': 21}),
+		('after', 'split_anim', {'name': '077016', 'from': 0, 'to': 21}),
 		('after', 'clear', {'plane': 'all'}),
 		#7
 		('after', 'use_alternate_palette', {'idx': 0}),
-		('after', 'anim', {'name': 0x75c66, 'from': 0, 'to': 21}),
+		('after', 'split_anim', {'name': '075c66', 'from': 0, 'to': 21}),
 		('after', 'clear', {'plane': 'all'}),
 		#8
 		('after', 'use_alternate_palette', {'idx': 1}),
-		('after', 'anim', {'name': 0x7789e, 'from': 0, 'to': 21}),
+		('after', 'split_anim', {'name': '07789e', 'from': 0, 'to': 21}),
 		('after', 'clear', {'plane': 'all'}),
 		#9
 		('after', 'use_alternate_palette', {'idx': 0}),
-		('after', 'anim', {'name': 0x77016, 'from': 16, 'to': 36}),
+		('after', 'split_anim', {'name': '077016', 'from': 16, 'to': 36}),
 		('after', 'clear', {'plane': 'all'}),
 		#10
 		('after', 'use_alternate_palette', {'idx': 1}),
-		('after', 'anim', {'name': 0x78104, 'from': 0, 'to': 21}),
+		('after', 'split_anim', {'name': '078104', 'from': 0, 'to': 21}),
 		('after', 'clear', {'plane': 'all'}),
 		#11
 		('after', 'use_alternate_palette', {'idx': 0}),
-		('after', 'anim', {'name': 0x77016, 'from': 0, 'to': 21}),
+		('after', 'split_anim', {'name': '077016', 'from': 0, 'to': 21}),
 		('after', 'clear', {'plane': 'all'}),
 		#12
 		('after', 'use_alternate_palette', {'idx': 1}),
-		('after', 'anim', {'name': 0x7789e, 'from': 10, 'to': 30}),
+		('after', 'split_anim', {'name': '07789e', 'from': 10, 'to': 30}),
 		('after', 'clear', {'plane': 'all'}),
 		#13
 		('after', 'use_alternate_palette', {'idx': 0}),
-		('after', 'anim', {'name': 0x77016, 'from': 20, 'to': 30}),
+		('after', 'split_anim', {'name': '077016', 'from': 20, 'to': 30}),
 		('after', 'clear', {'plane': 'all'}),
 
 		# Dancer 4: "crazy hips" dancer.
 		('after', 'palette', {'values': (0xff110022, 0xff221144, 0xff221144, 0xff221144)}),
 		('after', 'starteffect', {'name': 'copperpastels'}), # TODO also must show 3-delayed image, maybe by turning bitplanes off
-		#('after', 'anim', {'name': 0x8da00, 'from': 0, 'to': 210}),
+		#('after', 'split_anim', {'name': '08da00', 'from': 0, 'to': 210}),
 		('after', 'pause', {'ms': 3000}),
 
 
@@ -280,11 +281,7 @@ def encode_fadeto(wad, args):
 	return ms, struct.pack(ENDIAN + 'II', CMD_FADETO, ms) + encode_palette(wad, args)[1]
 
 def encode_anim(wad, args):
-	idx_fn = 'data/%06x_index.bin' % (args['name'])
-	get_file(idx_fn)
-	idx_idx = wad.add(idx_fn)
-
-	data_fn = 'data/%06x_anim.bin' % (args['name'])
+	data_fn = 'data/%s_anim.bin' % (args['name'])
 	get_file(data_fn)
 	data_idx = wad.add(data_fn)
 
@@ -295,9 +292,45 @@ def encode_anim(wad, args):
 	xor = args.get('xor', 1)
 
 	ms = ms_per_frame * (1 + frame_to - frame_from)
-	encoded = struct.pack(ENDIAN + 'IIIIIIII', CMD_ANIM, ms_per_frame, frame_from, frame_to, idx_idx, data_idx, bitplane, xor)
+	encoded = struct.pack(ENDIAN + 'IIIIIII', CMD_ANIM, ms_per_frame, frame_from, frame_to, data_idx, bitplane, xor)
 
 	return ms, encoded
+
+split_anim_map = None
+def encode_split_anim(wad, args):
+	global split_anim_map
+	if split_anim_map is None:
+		with open('data/split_map.json', 'r') as h:
+			split_anim_map = json.load(h)
+	
+	frame_from = args['from']
+	frame_to = args['to']
+	bitplane = args.get('plane', 0)
+	msperframe = args.get('msperframe', 40)
+
+	results = []
+
+	while frame_from < frame_to:
+		# Find the portion of the split animation containing frame_from and encode as many anims as
+		# we can with it.
+		first_frame = 0
+		for idx, num_frames in enumerate(split_anim_map[args['name']]):
+			if frame_from >= first_frame and frame_from < (first_frame + num_frames):
+				# We've found the first frame -- how many frames can we take from this one?
+				frames_requested = 1 + (frame_to - frame_from)
+				offset_frame = frame_from - first_frame
+				frames_allocated = min(num_frames - offset_frame, frames_requested)
+				sub_name = '%s-%02d' % (args['name'], idx)
+				
+				anim_args = {'name': sub_name, 'from': offset_frame, 'to': offset_frame + frames_allocated - 1, 'xor': args.get('xor', 1), 'plane': bitplane, 'msperframe': msperframe}
+				yield ('anim', anim_args)
+
+				frame_from += frames_allocated
+				break
+
+			first_frame += num_frames
+		else:
+			raise RuntimeError("Couldn't find anims for requested frames")
 
 def encode_end(wad, args):
 	return 0, struct.pack(ENDIAN + 'I', CMD_END)
@@ -402,10 +435,24 @@ def get_demo_sequence(wad, choreography):
 
 	# Returns an encoded demo sequence.
 
+	# Preprocess animation splits. This is ugly...
+	split_anim_choreography = []
+	for elem in choreography:
+		if elem[1] == 'split_anim':
+			first = True
+			for split_anim in encode_split_anim(wad, elem[2]):
+				if first:
+					split_anim_choreography.append((elem[0],) + split_anim)
+					first = False
+				else:
+					split_anim_choreography.append(('after',) + split_anim)
+		else:
+			split_anim_choreography.append(elem)
+
 	previous_start = 0 # ms
 	previous_end = 0 # ms
 
-	for entry in choreography:
+	for entry in split_anim_choreography:
 
 		this_entry_ms, encoded_entry = encode_demo_entry(wad, entry)
 		

@@ -2,6 +2,10 @@ OBJS=main.o graphics.o anim.o scene.o files.o choreography.o sound.o iff.o iff-f
 
 LIBS=-lSDL2 -lm -lmikmod -lpthread
 CFLAGS=-g -O2 -std=c99 -Wall -Werror -fsanitize=address -Wno-unused-function
+#CFLAGS=-g -O0 -std=c99 -Wall -Werror -Wno-unused-function
+
+# POSIX backend
+CFLAGS += -DBACKEND_SUPPORTS_SOUND=1 -DBACKEND_SUPPORTS_ILBM=1
 
 # Lame OS detection
 UNAME:=$(shell uname)

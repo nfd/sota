@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include <assert.h>
 
 #include "anim.h"
 #include "graphics.h"
@@ -24,9 +25,9 @@ int anim_offset_y;
 struct Bitplane *anim_bitplane;
 bool anim_xor;
 
-#define MAX_SIMULTANEOUS_ANIM 2
+//#define MAX_SIMULTANEOUS_ANIM 2
 
-struct animation current_anim[MAX_SIMULTANEOUS_ANIM];
+struct animation current_anim, prev_anim;
 uint8_t current_tween[MAX_TWEENED_VERTICES * 2];
 
 void anim_init()
@@ -45,6 +46,8 @@ void anim_init()
 	anim_offset_y = window_height - (ANIM_SOURCE_HEIGHT * anim_scale_y);
 
 	anim_bitplane = &backend_bitplane[0];
+
+	current_anim.data_file = prev_anim.data_file = -1;
 }
 
 void anim_set_bitplane(struct Bitplane *bitplane) {
@@ -89,7 +92,9 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 		case 0xd0:
 		{
 			int num_vertices = *data++;
-			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_scale_x, anim_scale_y, anim_offset_x, anim_offset_y, anim_bitplane, anim_xor);
+			if(num_vertices > 0) {
+				graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_scale_x, anim_scale_y, anim_offset_x, anim_offset_y, anim_bitplane, anim_xor);
+			}
 			data += (num_vertices * 2);
 			break;
 		}
@@ -103,6 +108,14 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 			tween_to       += ((data[0] << 8) + (data[1])); data += 2;
 			int tween_t     = *data++; // position in tween
 			int tween_count = *data++;
+
+			if(tween_from < current_anim.data) {
+				// A tween referencing a previous animation. We boldly assume it is specifically referencing the previous
+				// block (which always happens in SOTA). split_and_compress.py ensures that tweens never reference beyond
+				// their current block, so this is the only other-block case.
+				ptrdiff_t offset = (uintptr_t)current_anim.data - (uintptr_t)tween_from; // How far before the start of the block?
+				tween_from = prev_anim.past_data_end - offset;
+			}
 
 			uint8_t *shape = lerp_tween(tween_from, tween_to, tween_t, tween_count);
 
@@ -152,28 +165,34 @@ uint8_t *lerp_tween(uint8_t *tween_from, uint8_t *tween_to, int tween_t, int twe
 	return current_tween;
 }
 
-struct animation *anim_load(int idx_file, int data_file, int anim_idx) {
-	struct animation *anim = &current_anim[anim_idx];
+struct animation *anim_load(int data_file, int anim_idx) {
+	/*
+	 * Format of an animation file
+	 * 2 bytes: number of indices
+	 * ...    : indices
+	 * ...    : animation data
+	*/
+	if(current_anim.data_file != data_file) {
+		prev_anim = current_anim;
 
-	anim->indices = anim->data = NULL;
+		current_anim.indices = current_anim.data = NULL;
 
-	ssize_t indices_size;
-	anim->indices = file_get(idx_file, &indices_size);
-	if(anim->indices == NULL) {
-		fprintf(stderr, "anim load fail\n");
-		anim_destroy(anim);
-		return NULL;
+		ssize_t size;
+
+		uint8_t *anim_file = file_get(data_file, &size);
+		if(anim_file == NULL) {
+			fprintf(stderr, "anim load fail\n");
+			anim_destroy(&current_anim);
+			return NULL;
+		}
+
+		current_anim.num_frames = anim_file[0] << 8 | anim_file[1];
+		current_anim.indices = anim_file + sizeof(uint16_t);
+		current_anim.data = current_anim.indices + (current_anim.num_frames * 2);
+		current_anim.past_data_end = anim_file + size;
 	}
 
-	anim->data = file_get(data_file, NULL);
-	if(anim->data == NULL) {
-		anim_destroy(anim);
-		return NULL;
-	}
-
-	anim->num_frames = indices_size / 2;
-
-	return anim;
+	return &current_anim;
 }
 
 int anim_destroy(struct animation *anim) {

@@ -5,6 +5,8 @@ import struct
 import urllib.request
 import gzip
 
+import libsotadisk
+
 OUTPUT_DIR_JSON='shapes'
 OUTPUT_DIR_BINARY='native/data'
 
@@ -111,89 +113,15 @@ animations = (
 	0xd82fa,
 )
 
-class ShapeMaker:
-	def __init__(self, handle):
-		self.handle = handle
-
-	def getscript(self):
-		script = {}
-
-		# Read the index first.
-		startpos = self.handle.tell()
-
-		num_indices = struct.unpack('>H', self.handle.read(2))[0]
-		indices = []
-
-		for i in range(num_indices + 1):
-			index = struct.unpack('>I', self.handle.read(4))[0]
-			indices.append(index)
-
-		# find the smallest index and subtract to get 0-based indices.
-		script_offset = min(indices)
-		for i in range(len(indices)):
-			indices[i] -= script_offset
-			assert indices[i] >= 0
-
-		# Read the script. Note that indices may repeat, hence the dict.
-		for index in indices:
-			pos = startpos + index + script_offset
-			if index not in script:
-				self.handle.seek(pos)
-				script[index] = self.read_one()
-				if script[index] is None:
-					print("Early exit")
-					break
-
-		# Combine all the script portions into one byte array.
-		max_length = max(script.keys())
-		max_length += len(script[max_length])
-
-		all_scripts = [0] * max_length
-
-		for index, thescript in script.items():
-			all_scripts[index:index+len(thescript)] = thescript
-
-		return {'indices': indices, 'data': all_scripts}
-
-	def next_byte(self):
-		return struct.unpack('B', self.handle.read(1))[0]
-
-	def read_one(self):
-		# Read one combined drawing command.
-		data = []
-
-		cmd_major = self.next_byte()
-		data.append(cmd_major)
-
-		for i in range(cmd_major):
-			cmd_minor = self.next_byte()
-			data.append(cmd_minor)
-
-			if cmd_minor & 0xf0 == 0xd0:
-				# Drawing command
-				num_points = self.next_byte()
-				data.append(num_points)
-				data.extend(list(self.handle.read(num_points * 2)))
-			elif cmd_minor in (0xe6, 0xe7, 0xe8):
-				# Tweening
-				data.extend(list(self.handle.read(6)))
-			elif cmd_minor == 0xf2:
-				unknown = list(self.handle.read(6))
-				data.extend(unknown)
-			else:
-				print("Unknown cmd %02x @%06x" % (cmd_minor, self.handle.tell() - 1))
-				raise NotImplementedError()
-
-		return data
-
 path = 'Spaceballs-StateOfTheArt.adf'
 
 def write_binary(script, path_prefix):
-	with open(path_prefix + '_index.bin', 'wb') as h:
+	with open(path_prefix + '_anim.bin', 'wb') as h:
+		h.write(struct.pack('>H', len(script['indices']))) # number of indices following
+
 		for index in script['indices']:
 			h.write(struct.pack('>H', index))
 
-	with open(path_prefix + '_anim.bin', 'wb') as h:
 		h.write(bytes(script['data']))
 
 def write_animation(image):
@@ -203,9 +131,8 @@ def write_animation(image):
 
 	with open(path, 'rb') as h:
 		h.seek(image)
-		shapemaker = ShapeMaker(h)
+		script = libsotadisk.getscript(h)
 
-		script = shapemaker.getscript()
 		with open(pathname_json, 'w') as h:
 			json.dump(script, h, sort_keys=True)
 

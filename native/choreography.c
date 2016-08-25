@@ -8,23 +8,17 @@
 #include "graphics.h"
 #include "anim.h"
 #include "scene.h"
-#include "sound.h"
-#include "iff.h"
-#include "backend.h"
 
-#define CMD_END 0
-#define CMD_CLEAR 1
-#define CMD_PALETTE 2
-#define CMD_FADETO 3
-#define CMD_ANIM 4
-#define CMD_PAUSE 5
-#define CMD_MOD 6
-#define CMD_ILBM 7
-#define CMD_SOUND 8
-#define CMD_STARTEFFECT 9
-#define CMD_LOADFONT 10
-#define CMD_ALTERNATE_PALETTE 11
-#define CMD_USE_ALTERNATE_PALETTE 12
+#ifdef BACKEND_SUPPORTS_SOUND
+#include "sound.h"
+#endif
+
+#ifdef BACKEND_SUPPORTS_ILBM
+#include "iff.h"
+#endif
+
+#include "backend.h"
+#include "choreography_commands.h"
 
 #define MOD_START 1
 #define MOD_STOP 2
@@ -85,7 +79,6 @@ struct choreography_anim {
 	uint32_t ms_per_frame;
 	uint32_t frame_from;
 	uint32_t frame_to;
-	uint32_t index_file;
 	uint32_t data_file;
 	uint32_t bitplane;
 	uint32_t xor;
@@ -228,7 +221,7 @@ static void cmd_anim(struct choreography_anim *anim) {
 		anim_destroy(state.current_animation);
 	}
 
-	state.current_animation = anim_load(anim->index_file, anim->data_file, 0);
+	state.current_animation = anim_load(anim->data_file, 0);
 	state.current_animation_info = anim;
 
 	if(state.current_animation == NULL) {
@@ -244,6 +237,7 @@ static void cmd_pause(struct choreography_pause *pause) {
 }
 
 static void cmd_mod(struct choreography_mod *mod) {
+#ifdef BACKEND_SUPPORTS_SOUND
 	switch(mod->subcmd) {
 		case MOD_START:
 			sound_mod_play(mod->arg);
@@ -252,9 +246,11 @@ static void cmd_mod(struct choreography_mod *mod) {
 			sound_mod_stop();
 			break;
 	}
+#endif
 }
 
 static void cmd_ilbm(struct choreography_ilbm *ilbm) {
+#ifdef BACKEND_SUPPORTS_ILBM
 	// we re-use the fade-to palette for the image palette
 	// TODO display_type is ignored
 	struct LoadedIff iff;
@@ -274,10 +270,13 @@ static void cmd_ilbm(struct choreography_ilbm *ilbm) {
 
 		// Everything else has been done for us above.
 	}
+#endif
 }
 
 static void cmd_sound(struct choreography_sound *sound) {
+#ifdef BACKEND_SUPPORTS_SOUND
 	sound_sample_play(sound->file_idx);
+#endif
 }
 
 static void cmd_starteffect(int ms, struct choreography_starteffect *effect) {
