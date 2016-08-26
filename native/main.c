@@ -22,6 +22,7 @@
 #define OPT_NOSOUND 4
 #define OPT_WIDTH 5
 #define OPT_HEIGHT 6
+#define OPT_WAD 7
 
 struct option options[] = {
 	{"fullscreen", no_argument, NULL, OPT_FULLSCREEN},
@@ -30,6 +31,7 @@ struct option options[] = {
 	{"nosound", no_argument, NULL, OPT_NOSOUND},
 	{"width", required_argument, NULL, OPT_WIDTH},
 	{"height", required_argument, NULL, OPT_HEIGHT},
+	{"wad", required_argument, NULL, OPT_WAD},
 	{0, 0, 0, 0}
 };
 
@@ -40,12 +42,14 @@ static void help() {
 	printf("  --fullscreen     : run in fullscreen rather than a 640x480 window\n");
 	printf("  --ms <x>         : start at millisecond x rather than the beginning\n");
 	printf("  --nosound        : don't make any noise\n");
+	printf("  --wad            : use alternative wad file (sota.wad)\n");
 }
 
 int main(int argc, char **argv) {
 	bool fullscreen = false;
 	bool nosound = false;
 	int start_ms = 0;
+	char *wad_filename = 0;
 
 	int width = DEFAULT_WIDTH;
 	int height = DEFAULT_HEIGHT;
@@ -78,6 +82,9 @@ int main(int argc, char **argv) {
 			case OPT_HEIGHT:
 				height = atoi(optarg);
 				break;
+			case OPT_WAD:
+				wad_filename = optarg;
+				break;
 			case -1:
 				break;
 		}
@@ -87,7 +94,7 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "couldn't init backend\n");
 	}
 
-	if(files_init() == false) {
+	if(files_init(wad_filename) == false) {
 		fprintf(stderr, "couldn't read wad\n");
 		return 1;
 	}

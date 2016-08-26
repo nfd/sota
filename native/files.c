@@ -18,7 +18,7 @@
 
 uint8_t *wad;
 
-static uint8_t *read_entire_file(char *filename, ssize_t *size_out) {
+static uint8_t *read_entire_file(const char *filename, ssize_t *size_out) {
 	uint8_t *buf;
 	
 	int h = open(filename, O_RDONLY);
@@ -109,9 +109,12 @@ FILE *file_open(int idx)
 	}
 }
 
-bool files_init()
+bool files_init(const char *filename)
 {
-	wad = read_entire_file("sota.wad", NULL);
+	if(filename == 0)
+		filename = "sota.wad";
+
+	wad = read_entire_file(filename, NULL);
 	return wad != NULL;
 }
 
