@@ -26,8 +26,8 @@ def configure(ctx):
 def build(ctx):
 	ctx.load('pebble_sdk')
 
-	# wzdd: tell the SOTA code we're building for Pebble
-	ctx.define('PEBBLE_WATCHFACE', 1)
+	# tell the SOTA code we're building for Pebble
+	# ctx.define('PEBBLE_WATCHFACE', 1)
 
 	build_worker = os.path.exists('worker_src')
 	binaries = []

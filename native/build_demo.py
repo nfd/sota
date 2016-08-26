@@ -119,7 +119,7 @@ DEMO = [
 				'VOTE[', 'FUNK', 'KRAZY', 'NICE', 'RAPID', 'RAP', 'RIPPED', 'UGLY', 'CLASS',
 				'VOTE[', 'CODE', 'MUSIC', 'GFX',)}),
 
-		('after', 'pause', {'ms': 3000}),
+		('after', 'pause', {'ms': 3000, 'watchface-hint': 'keep'}),
 		('after', 'starteffect', {'name': 'nothing'}),
 		('after', 'clear', {'plane': 'all'}),
 

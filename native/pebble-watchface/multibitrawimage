@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+
+"""
+Format:
+
+4 bytes		'img*'
+2 bytes     width
+2 bytes     height
+2 bytes     # bitplanes
+2 bytes     # of palette entries
+4 bytes * n palette entry in AARRGGBB format
+4 bytes     length of plane 0 data (compressed with zlib)
+4 bytes     length of plane 1 data (compressed with zlib)
+...
+n bytes     plane 0 data
+n bytes     plane 1 data
+...
+
+All is little endian
+"""
+
+import argparse
+import math
+import zlib
+import struct
+
+from PIL import Image
+
+from pilutils import decode_lousy_pil_palette_data
+
+def align(amt, align):
+	return amt + ((align - (amt % align)) % align)
+
+def to_planes(filename):
+	source = Image.open(filename)
+
+	bit_count = 0
+
+	palette = decode_lousy_pil_palette_data(source.palette.getdata())
+	num_planes = math.ceil(math.log2(len(palette)))
+
+	planes = [[] for i in range(num_planes)]
+
+	width, height = source.size
+
+	for i, b in enumerate(source.getdata()):
+		assert isinstance(b, int)
+
+		if i % width == 0:
+			# We've reached the end of a line -- force a new byte.
+			bit_count = 0 
+
+		for plane_idx in range(len(planes)):
+			if bit_count % 8 == 0:
+				planes[plane_idx].append(0)
+			else:
+				planes[plane_idx][-1] <<= 1
+
+			if b & (1 << plane_idx):
+				planes[plane_idx][-1] |= 1
+
+		bit_count += 1
+	
+	for idx in range(1, len(planes)):
+		assert len(planes[idx - 1]) == len(planes[idx])
+	
+	# Ensure that every line is byte aligned; this means potentially lengthening the lines 
+	aligned_width = align(width, 8)
+
+	return aligned_width, height, palette, [bytes(plane) for plane in planes]
+
+def tuple_to_argb(t):
+	assert len(t) == 3
+	return (0xff << 24) \
+			| (t[0] << 16) \
+			| (t[1] << 8) \
+			| (t[2])
+
+def main():
+	parser = argparse.ArgumentParser()
+	parser.add_argument('input', help='input filename')
+	parser.add_argument('output', help='output filename')
+	args = parser.parse_args()
+
+	width, height, palette, planes = to_planes(args.input)
+
+	with open(args.output, 'wb') as h:
+		h.write(b'mbit')
+		h.write(struct.pack('<HHHH', width, height, len(planes), len(palette)))
+		for entry in palette:
+			h.write(struct.pack('<I', tuple_to_argb(entry)))
+
+		zplanes = [zlib.compress(plane) for plane in planes]
+
+		for zplane in zplanes:
+			h.write(struct.pack('<I', len(zplane)))
+
+		for zplane in zplanes:
+			h.write(zplane)
+
+if __name__ == '__main__':
+	main()
+
