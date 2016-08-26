@@ -75,16 +75,13 @@ void scene_init()
 }
 
 bool scene_init_spotlights() {
-	// spot 0 trails all over the display
-	backend_delete_bitplanes();
-	backend_allocate_bitplane(0, window_width, window_height); // animation bitplane
-	backend_allocate_bitplane(1, window_width * 2, window_height * 2);
+	// spot 0 trails all over the display -- this is defined in choreography
 
-	// spot 1 moves up and down, reusing the same data.
+	// spot 1 moves up and down, reusing the same data as spot 0
 	backend_bitplane[2].width = backend_bitplane[1].width;
 	backend_bitplane[2].height = backend_bitplane[1].height;
 	backend_bitplane[2].stride = backend_bitplane[1].stride;
-	backend_bitplane[2].data = backend_bitplane[0].data;
+	backend_bitplane[2].data = backend_bitplane[1].data;
 	backend_bitplane[2].data_start = backend_bitplane[1].data_start;
 
 	/* Scale backgrounds sensibly */
@@ -123,9 +120,6 @@ void scene_spotlights_tick(int cnt) {
 
 void scene_init_votevotevote(void *effect_data, uint32_t *palette_a, uint32_t *palette_b)
 {
-	backend_delete_bitplanes();
-	backend_allocate_standard_bitplanes();
-
 	votevotevote_last_palette = 0; // light palette
 	current_text_block = effect_data;
 
@@ -216,9 +210,6 @@ void scene_votevotevote_tick(int ms)
 /* Delayed blit: every N ms, blit blitplane n over bitplane n + 1 */
 void scene_init_delayedblit()
 {
-	backend_delete_bitplanes();
-	backend_allocate_standard_bitplanes();
-
 	delayed_blit_delay = 80;
 	delayed_blit_next_blit = 0;
 }

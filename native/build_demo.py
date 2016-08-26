@@ -48,8 +48,15 @@ EFFECT_NUM = {
 		'copperpastels': 4,
 }
 
+# Bitplane size styles
+BITPLANE_OFF = 0
+BITPLANE_1X1 = 1
+BITPLANE_2X1 = 2
+BITPLANE_2X2 = 3
+
 DEMO = [
 		# Intro: hand moving out
+		('after', 'scene', {'name': 'intro', 'planes': (BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1)}),
 		('after', 'clear', {'plane': 'all'}),
 		('after', 'palette', {'values': (0xff110022, 0xffffffff, 0xff110022, 0xffffffff)}),
 		('after', 'fadeto', {'ms': 2000, 'values': (0xff110022, 0xff221144, 0xff110022, 0xff110033)}),
@@ -66,22 +73,19 @@ DEMO = [
 		('after', 'mod', {'type': 'stop'}),
 
 		# Title: STATE OF THE ART, credits, dragon pic
+		('after', 'scene', {'name': 'title', 'planes': (BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1)}),
 		('after', 'ilbm', {'name': 'data/state.iff', 'display': 'fullscreen'}),
 		('after', 'sound', {'name': 'data/heartbeat.wav', 'ms': 1000}),
 		('after', 'fadeto', {'ms': 250, 'values': ()}),
-
 		('after', 'ilbm', {'name': 'data/of.iff', 'display': 'fullscreen'}),
 		('after', 'sound', {'name': 'data/heartbeat.wav', 'ms': 1000}),
 		('after', 'fadeto', {'ms': 250, 'values': ()}),
-
 		('after', 'ilbm', {'name': 'data/the.iff', 'display': 'fullscreen'}),
 		('after', 'sound', {'name': 'data/heartbeat.wav', 'ms': 1000}),
 		('after', 'fadeto', {'ms': 250, 'values': ()}),
-
 		('after', 'ilbm', {'name': 'data/art.iff', 'display': 'fullscreen'}),
 		('after', 'sound', {'name': 'data/heartbeat.wav', 'ms': 1000}),
 		('after', 'fadeto', {'ms': 250, 'values': ()}),
-
 		('after', 'clear', {'plane': 'all'}),
 		('after', 'ilbm', {'name': 'data/authors.iff', 'display': 'fullscreen', 'fadein_ms': 2000}),
 		('after', 'pause', {'ms': 3000}),
@@ -95,6 +99,7 @@ DEMO = [
 		('after', 'fadeto', {'ms': 1000, 'values': ()}),
 
 		# Morph to first dancer
+		('after', 'scene', {'name': 'dance-1', 'planes': (BITPLANE_1X1, BITPLANE_2X2, BITPLANE_OFF, BITPLANE_OFF, BITPLANE_OFF)}),
 		('after', 'clear', {'plane': 'all'}),
 		('simultaneously', 'starteffect', {'name': 'spotlights'}),
 		('after', 'mod', {'type': 'start', 'name': 'data/condom corruption.mod'}),
@@ -103,11 +108,12 @@ DEMO = [
 			0xffbbbb00)}),
 		('simultaneously', 'split_anim', {'name': '067080', 'from': 0, 'to': 25}),
 		('after', 'split_anim', {'name': '067230', 'from': 0, 'to': 195}),
-		('after', 'fadeto', {'ms': 250, 'values': ()}),
-		('simultaneously', 'split_anim', {'name': '067230', 'from': 196, 'to': 209}),
+		('after', 'split_anim', {'name': '067230', 'from': 196, 'to': 209}),
+		('simultaneously', 'fadeto', {'ms': 250, 'values': ()}),
 		('after', 'starteffect', {'name': 'nothing'}),
 
 		# VOTE! VOTE! VOTE!
+		('after', 'scene', {'name': 'votevotevote1', 'planes': (BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1)}),
 		('after', 'clear', {'plane': 'all'}),
 		# black-on-white version
 		('after', 'alternate_palette', {'idx': 0, 'values': (0xffeeffff, 0xff000000, 0xff779999, 0xffddeeee, 0xff114444, 0xff447777, 0xff003333, 0xffaaaadd)}),
@@ -126,6 +132,7 @@ DEMO = [
 		# Second set of dancers. Fast cuts (1 second per shot) of two separate dancers, 
 		# one with orange-brown trails and one with white-blue trails.
 		# Palette 0: Orange-brown dancer on white
+		('after', 'scene', {'name': 'dance-2', 'planes': (BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1)}),
 		('after', 'alternate_palette', {'idx': 0, 'values': (
 			0xffffffff, 0xffcc7733, 0xffdd7733, 0xffaa3311, 0xffdd8844, 0xffaa3311, 0xffaa4422, 0xff661100,
 			0xffee9944, 0xffaa3311, 0xffaa3311, 0xffaa3311, 0xffbb4422, 0xffaa3311, 0xff771100, 0xff440000,
@@ -188,11 +195,12 @@ DEMO = [
 		('after', 'split_anim', {'name': '07789e', 'from': 10, 'to': 30}),
 		('after', 'clear', {'plane': 'all'}),
 		#13
-		('after', 'use_alternate_palette', {'idx': 0}),
-		('after', 'split_anim', {'name': '077016', 'from': 20, 'to': 30}),
-		('after', 'clear', {'plane': 'all'}),
+		#('after', 'use_alternate_palette', {'idx': 0}),
+		#('after', 'split_anim', {'name': '077016', 'from': 20, 'to': 30}),
+		#('after', 'clear', {'plane': 'all'}),
 
-		# Dancer 4: "crazy hips" dancer.
+		# The 'crazy hips' dancer
+		('after', 'scene', {'name': 'dance-3', 'planes': (BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1)}),
 		('after', 'palette', {'values': (0xff110022, 0xff221144, 0xff221144, 0xff221144)}),
 		('after', 'starteffect', {'name': 'copperpastels'}), # TODO also must show 3-delayed image, maybe by turning bitplanes off
 		#('after', 'split_anim', {'name': '08da00', 'from': 0, 'to': 210}),
@@ -215,6 +223,7 @@ CMD_STARTEFFECT = 9
 CMD_LOADFONT = 10
 CMD_ALTERNATE_PALETTE = 11
 CMD_USE_ALTERNATE_PALETTE = 12
+CMD_SCENE = 13
 
 NET_USE_OK = False
 MAX_FILE_LENGTH = 1024 * 1024
@@ -373,6 +382,15 @@ def pad_to_i32(block):
 	
 	return block
 
+def encode_scene(wad, args):
+	planes_type = args['planes']
+	assert len(planes_type) == 5
+
+	name = args['name'].encode('utf-8')
+
+	encoded = pad_to_i32(struct.pack(ENDIAN + 'IBBBBBB', CMD_SCENE, *planes_type, len(name)) + name)
+	return 0, encoded
+
 def pack_text_block(text_block):
 	# Format:
 	# I32: length of entire sub-block (including this length)
@@ -452,6 +470,8 @@ def get_demo_sequence(wad, choreography):
 	previous_start = 0 # ms
 	previous_end = 0 # ms
 
+	scenes = {} # maps MS to name
+
 	for entry in split_anim_choreography:
 
 		this_entry_ms, encoded_entry = encode_demo_entry(wad, entry)
@@ -469,8 +489,14 @@ def get_demo_sequence(wad, choreography):
 		print(this_start, entry)
 		yield struct.pack(ENDIAN + 'II', this_start, len(encoded_entry) + 8) + encoded_entry
 
+		if entry[1] == 'scene':
+			# Add the scene to the scenes list
+			scenes[this_end] = entry[1]
+
 		previous_start = this_start
 		previous_end = this_end
+
+	print("Scenes:", scenes)
 
 def build_demo():
 	wad = Wad(ENDIAN)

@@ -32,6 +32,11 @@
 #define ILBM_FULLSCREEN 0
 #define ILBM_CENTRE 1
 
+#define BITPLANE_OFF 0
+#define BITPLANE_1X1 1
+#define BITPLANE_2X1 2
+#define BITPLANE_2X2 3
+
 /* Frame rate the demo runs at. This doesn't affect the speed of the animations, 
  * which run at 25 fps */
 #define MS_PER_FRAME 20
@@ -119,6 +124,13 @@ struct choreography_loadfont {
 	uint32_t startchar;
 	uint32_t numchars;
 	uint16_t positions[];
+};
+
+struct choreography_scene {
+	struct choreography_header header;
+	uint8_t bitplane_style[5];
+	uint8_t name_length;
+	uint8_t name[];
 };
 
 static uint8_t *choreography;
@@ -320,6 +332,29 @@ static void cmd_loadfont(int ms, struct choreography_loadfont *loadfont) {
 	backend_font_load(loadfont->file_idx, loadfont->startchar, loadfont->numchars, loadfont->positions);
 }
 
+static void cmd_scene(int ms, struct choreography_scene *scene) {
+	/* Initialise bitplanes */
+	backend_delete_bitplanes();
+	for(int i = 0; i < 5; i++) {
+		switch(scene->bitplane_style[i]) {
+			case BITPLANE_OFF:
+				break;
+			case BITPLANE_1X1:
+				backend_allocate_bitplane(i, window_width, window_height);
+				break;
+			case BITPLANE_2X1:
+				backend_allocate_bitplane(i, window_width * 2, window_height);
+				break;
+			case BITPLANE_2X2:
+				backend_allocate_bitplane(i, window_width * 2, window_height * 2);
+				break;
+			default:
+				printf("Unknown bitplane style\n");
+				break;
+		}
+	}
+}
+
 // Create the state item at 'pos' without advancing it.
 static void create_state_item(int ms, struct choreography_header *pos)
 {
@@ -362,6 +397,9 @@ static void create_state_item(int ms, struct choreography_header *pos)
 			break;
 		case CMD_LOADFONT:
 			cmd_loadfont(ms, (struct choreography_loadfont *)pos);
+			break;
+		case CMD_SCENE:
+			cmd_scene(ms, (struct choreography_scene *)pos);
 			break;
 		default:
 			/* This is bad */
