@@ -7,8 +7,8 @@ import gzip
 
 import libsotadisk
 
-OUTPUT_DIR_JSON='shapes'
-OUTPUT_DIR_BINARY='native/data'
+OUTPUT_DIR_JSON='../shapes'
+OUTPUT_DIR_BINARY='data'
 
 """
 Data format. View it as a finite-state machine, I guess.
@@ -113,7 +113,7 @@ animations = (
 	0xd82fa,
 )
 
-path = 'Spaceballs-StateOfTheArt.adf'
+path = '../Spaceballs-StateOfTheArt.adf'
 
 def write_binary(script, path_prefix):
 	with open(path_prefix + '_anim.bin', 'wb') as h:

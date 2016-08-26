@@ -7,8 +7,8 @@ import struct
 import os
 import json
 
-SOURCE_ANIMS = glob.glob('native/data/??????_anim.bin')
-COMPRESSED_ANIM_DIR = 'native/data'
+SOURCE_ANIMS = glob.glob('data/??????_anim.bin')
+COMPRESSED_ANIM_DIR = 'data'
 
 MAX_ANIM_SIZE = 4 * 1024
 

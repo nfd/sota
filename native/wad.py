@@ -28,24 +28,32 @@ class Wad:
 				filedata = h.read()
 
 			idx = self.add_bin(filedata, is_choreography=is_choreography)
+			self.filename_to_idx[filename] = idx
 
-		self.filename_to_idx[filename] = idx
+		return idx
+
+	def add_bin(self, filedata, is_choreography=False, filename=None):
+		if filename is not None and filename in self.filename_to_idx:
+			idx = self.filename_to_idx[filename]
+		else:
+			idx = len(self.files)
+
+			filelength = len(filedata)
+			if len(filedata) % 4 != 0:
+				filedata += b'\0' * (4 - (len(filedata) % 4))
+
+			self.files.append((filelength, filedata))
+
+			if is_choreography:
+				self.choreography_idx = idx
+
+			if filename is not None:
+				self.filename_to_idx[filename] = idx
 
 		return idx
 
-	def add_bin(self, filedata, is_choreography=False):
-		idx = len(self.files)
-
-		filelength = len(filedata)
-		if len(filedata) % 4 != 0:
-			filedata += b'\0' * (4 - (len(filedata) % 4))
-
-		self.files.append((filelength, filedata))
-
-		if is_choreography:
-			self.choreography_idx = idx
-
-		return idx
+	def __contains__(self, filename):
+		return filename in self.filename_to_idx
 
 	def write(self, filename):
 		# calculate sizes

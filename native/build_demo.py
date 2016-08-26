@@ -293,7 +293,12 @@ def encode_fadeto(wad, args):
 def encode_anim(wad, args):
 	data_fn = 'data/%s_anim.bin' % (args['name'])
 	get_file(data_fn)
-	data_idx = wad.add(data_fn)
+
+	if 'transform_func' in args and data_fn not in wad:
+		xformed = args['transform_func'](data_fn)
+		data_idx = wad.add_bin(xformed, filename=data_fn)
+	else:
+		data_idx = wad.add(data_fn)
 
 	frame_from = args['from']
 	frame_to   = args['to']
@@ -332,7 +337,16 @@ def encode_split_anim(wad, args):
 				frames_allocated = min(num_frames - offset_frame, frames_requested)
 				sub_name = '%s-%02d' % (args['name'], idx)
 				
-				anim_args = {'name': sub_name, 'from': offset_frame, 'to': offset_frame + frames_allocated - 1, 'xor': args.get('xor', 1), 'plane': bitplane, 'msperframe': msperframe}
+				anim_args = {'name': sub_name,
+						'from': offset_frame,
+						'to': offset_frame + frames_allocated - 1,
+						'xor': args.get('xor', 1),
+						'plane': bitplane,
+						'msperframe': msperframe}
+
+				if 'transform_func' in args:
+					anim_args['transform_func'] = args['transform_func']
+
 				yield ('anim', anim_args)
 
 				frame_from += frames_allocated

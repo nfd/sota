@@ -40,6 +40,9 @@ class DrawCommands:
 		else:
 			return False
 
+	def __iter__(self):
+		return iter(self.commands)
+
 #	def has_points_at_position(self, position):
 #		for cmd in self.commands:
 #			if isinstance(cmd, Vector) and cmd.points_position == position:
@@ -81,6 +84,12 @@ class Vector:
 	def __repr__(self):
 		return '<Vector: %d, %r>' % (self.cmd_minor,
 				self.points)
+
+	def for_each_point(self, func):
+		for idx in range(0, len(self.points), 2):
+			x, y = func(self.points[idx], self.points[idx + 1])
+			self.points[idx] = x
+			self.points[idx + 1] = y
 
 class Tween:
 	def __init__(self, cmd_minor, from_, to_, t, count, position=None):
@@ -146,6 +155,17 @@ def read_packed_animation(read_func):
 		anims[anim.position] = anim
 
 	return indices, anims
+
+def serialise_packed_animation(indices, anims):
+	serialised = [struct.pack('>H', len(indices))]
+
+	for idx in indices:
+		serialised.append(struct.pack('>H', idx))
+
+	for idx in indices:
+		serialised.append(bytes(anims[idx].serialise()))
+
+	return b''.join(serialised)
 
 class ByteReader:
 	def __init__(self, handle):
