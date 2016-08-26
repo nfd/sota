@@ -133,6 +133,17 @@ struct choreography_scene {
 	uint8_t name[];
 };
 
+struct choreography_scene_index_item {
+	uint32_t ms;
+	uint32_t offset;
+};
+
+struct choreography_scene_index {
+	struct choreography_header header;
+	uint32_t count;
+	struct choreography_scene_index_item items[];
+};
+
 static uint8_t *choreography;
 static struct choreography_header *pos;
 
@@ -401,6 +412,9 @@ static void create_state_item(int ms, struct choreography_header *pos)
 		case CMD_SCENE:
 			cmd_scene(ms, (struct choreography_scene *)pos);
 			break;
+		case CMD_SCENE_INDEX:
+			// Ignored during playback
+			break;
 		default:
 			/* This is bad */
 			fprintf(stderr, "Unknown choreography command %x\n", pos->cmd);
@@ -461,19 +475,24 @@ static void run(int ms) {
 }
 
 static void skip_to_start_ms(int ms) {
-	/* Advance our start, but apply palette changes. This is a hack. */
+	/* Advance to the requested position. */
 	pos = (struct choreography_header *)choreography;
-	while(pos->start_ms < ms) {
-		switch(pos->cmd) {
-			case CMD_PALETTE:
-				cmd_palette((struct choreography_palette *)pos);
-				break;
-			case CMD_FADETO: {
-				struct choreography_fadeto *fadeto = (struct choreography_fadeto *)pos;
-				backend_set_palette(fadeto->count, fadeto->values);
-				break;
-			 }
+	if(pos->cmd != CMD_SCENE_INDEX) {
+		fprintf(stderr, "no scene index!\n");
+		return;
+	}
+
+	/* Use the scene index to skip ahead if possible. */
+	struct choreography_scene_index *idx = (struct choreography_scene_index *)pos;
+	for(int scene_num = 0; scene_num < idx->count; scene_num ++) {
+		if(idx->items[scene_num].ms < ms) {
+			pos = (struct choreography_header *)(choreography + idx->items[scene_num].offset);
 		}
+	}
+
+	/* Linear search through this scene to get to the exact point */
+	while(pos->start_ms < ms && pos->cmd != CMD_END) {
+		create_state_item(ms, pos);
 		pos = next_header(pos);
 	}
 }

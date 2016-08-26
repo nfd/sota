@@ -224,6 +224,7 @@ CMD_LOADFONT = 10
 CMD_ALTERNATE_PALETTE = 11
 CMD_USE_ALTERNATE_PALETTE = 12
 CMD_SCENE = 13
+CMD_SCENE_INDEX = 14
 
 NET_USE_OK = False
 MAX_FILE_LENGTH = 1024 * 1024
@@ -447,11 +448,39 @@ def encode_demo_entry(wad, entry):
 	encoder = globals()['encode_%s' % (command)]
 	return encoder(wad, args)
 
+class SceneIndexEntry:
+	def __init__(self, scene_tuples):
+		self._length = None
+		self.scene_count = len(scene_tuples)
+
+		# Offset the tuple byte indices with our own length
+		self.scene_tuples = [(scene[0], scene[1] + len(self)) for scene in scene_tuples]
+		print('scene tuples', self.scene_tuples)
+
+	def __len__(self):
+		if self._length is None:
+			length  = 4 # header: ms of this start (always 0)
+			length += 4 # header: total length of this entry (including header)
+			length += 4 # CMD_SCENE_INDEX
+			length += 4 # number of indices
+			length += 8 * (self.scene_count)  # array of (ms, byte-offset-from-choreography-start)
+			self._length = length
+
+		return self._length
+
+	def serialise(self):
+		encoded = [struct.pack(ENDIAN + 'IIII', 0, len(self), CMD_SCENE_INDEX, len(self.scene_tuples))]
+		for ms, offset in self.scene_tuples:
+			encoded.append(struct.pack(ENDIAN + 'II', ms, offset))
+
+		return b''.join(encoded)
+
 def get_demo_sequence(wad, choreography):
 	# The time unit is milliseconds. Most animations run at 25fps or 40ms/frame.
 	# This can be changed if necessary using the 'msperframe' key of an 'anim' entry.
 
 	# Returns an encoded demo sequence.
+	encoded = []
 
 	# Preprocess animation splits. This is ugly...
 	split_anim_choreography = []
@@ -470,8 +499,9 @@ def get_demo_sequence(wad, choreography):
 	previous_start = 0 # ms
 	previous_end = 0 # ms
 
-	scenes = {} # maps MS to name
+	scene_start = [] # (ms, position-in-file)
 
+	byte_position = 0
 	for entry in split_anim_choreography:
 
 		this_entry_ms, encoded_entry = encode_demo_entry(wad, entry)
@@ -484,30 +514,39 @@ def get_demo_sequence(wad, choreography):
 			this_end = max(previous_end, this_start + this_entry_ms)
 		else:
 			raise NotImplementedError()
-	
-		# Two-byte frame number, two-byte length (including frame # and length), then encoded data.
-		print(this_start, entry)
-		yield struct.pack(ENDIAN + 'II', this_start, len(encoded_entry) + 8) + encoded_entry
 
 		if entry[1] == 'scene':
 			# Add the scene to the scenes list
-			scenes[this_end] = entry[1]
+			scene_start.append((this_end, byte_position))
+	
+		# Two-byte frame number, two-byte length (including frame # and length), then encoded data.
+		print(this_start, entry)
+		encoded_command = struct.pack(ENDIAN + 'II', this_start, len(encoded_entry) + 8) + encoded_entry
+		encoded.append(encoded_command)
+		byte_position += len(encoded_command)
+
 
 		previous_start = this_start
 		previous_end = this_end
 
-	print("Scenes:", scenes)
+	# Create the scene index and stick it at the start. The scene index consists of
+	# (uint32_t ms, uint32_t byte-offset-inside-choreography)
+	# ... for each scene.
+	encoded.insert(0, SceneIndexEntry(scene_start).serialise())
+
+	return b''.join(encoded)
+	print("Scene start:", scene_start)
 
 def build_demo():
 	wad = Wad(ENDIAN)
-	encoded = b''.join(encoded for encoded in get_demo_sequence(wad, DEMO))
+	encoded = get_demo_sequence(wad, DEMO)
 	wad.add_bin(encoded, is_choreography=True)
 	wad.write('sota.wad')
 	print("wrote sota.wad")
 
 def build_watchface(choreography):
 	wad = Wad(ENDIAN)
-	encoded = b''.join(encoded for encoded in get_demo_sequence(wad, choreography))
+	encoded = get_demo_sequence(wad, choreography)
 	wad.add_bin(encoded, is_choreography=True)
 	wad.write('sota-pebble.wad')
 	print('wrote sota-pebble.wad')
