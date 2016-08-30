@@ -1,5 +1,4 @@
 #define _DEFAULT_SOURCE
-#include <math.h>
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -45,6 +44,69 @@ struct {
 
 #define SQUARE(x) ((x) * (x))
 
+/* Inaccurate and slow sqrtf replacement because Pebble doesn't have it (working) */
+/* Source: http://www.codeproject.com/Articles/69941/Best-Square-Root-Method-Algorithm-Function-Precisi */
+float sqrt1(const float x)  
+{
+	union
+	{
+		int i;
+		float x;
+	} u;
+	u.x = x;
+	u.i = (1<<29) + (u.i >> 1) - (1<<22); 
+
+	// Two Babylonian Steps (simplified from:)
+	// u.x = 0.5f * (u.x + x/u.x);
+	// u.x = 0.5f * (u.x + x/u.x);
+	u.x =       u.x + x/u.x;
+	u.x = 0.25f*u.x + x/u.x;
+
+	return u.x;
+}  
+
+#define PI 3.1415192
+
+float lame_fmod(float x, float y)
+{
+	if (y == 0.0) {
+		return 0.0;
+	}
+
+	float res = x - y * ((int)(x / y));
+	return res;
+}
+
+float lame_fabs(float x)
+{
+	return x < 0? -x : x;
+}
+
+/* Sinf replacement for the same reason. See http://forum.devmaster.net/t/fast-and-accurate-sine-cosine/9648 */
+float dmsin(float x)
+{
+	const float B = 4/PI;
+	const float C = -4/(PI*PI);
+
+	x = lame_fmod(x, 2 * PI);
+	int neg = 1;
+	if(x > PI) {
+		x -= PI;
+		neg = -1;
+	}
+
+	float y = B * x + C * x * lame_fabs(x);
+
+#ifdef EXTRA_PRECISION
+	//  const float Q = 0.775;
+	const float P = 0.225;
+
+	y = P * (y * lame_abs(y) - y) + y;   // Q * y + P * y * abs(y)
+#endif
+	
+	return neg * y;
+}
+
 static void precalculate_pastels_brush() {
 	/* Precalculate the pastels brush, which is a filled circle with intensity
 	 * a function of distance from the centre.
@@ -52,13 +114,13 @@ static void precalculate_pastels_brush() {
 	int centrex = COPPER_PASTELS_HEIGHT / 2;
 	int centrey = COPPER_PASTELS_WIDTH / 2;
 
-	float max_distance = sqrtf((centrex * centrex) + (centrey * centrey));
+	float max_distance = sqrt1((centrex * centrex) + (centrey * centrey));
 
 	for(int y = 0; y < COPPER_PASTELS_HEIGHT; y++) {
 		for(int x = 0; x < COPPER_PASTELS_WIDTH; x++) {
 			int idx = (y * COPPER_PASTELS_WIDTH) + x;
 
-			float distance = sqrtf(SQUARE(abs(x - centrex)) + SQUARE(abs(y - centrey)));
+			float distance = sqrt1(SQUARE(abs(x - centrex)) + SQUARE(abs(y - centrey)));
 
 			pastels_brush[idx] = 255 - ((distance / max_distance) * 256);
 		}
@@ -88,7 +150,7 @@ bool scene_init_spotlights() {
 	int thickness = max(4 * global_scale, 4);
 	int gap = (2 * thickness) / 3;
 
-	int longest_distance = sqrtf(window_width * window_width + window_height * window_height);
+	int longest_distance = sqrt1(window_width * window_width + window_height * window_height);
 
 	for(int radius = thickness; radius < longest_distance; radius+= (thickness + gap)) {
 		planar_draw_thick_circle(&backend_bitplane[1], window_width, window_height, radius, thickness);
@@ -100,6 +162,7 @@ bool scene_init_spotlights() {
 void scene_deinit_spotlights() {
 }
 
+//#include <math.h>
 void scene_spotlights_tick(int cnt) {
 
 	// Paths:
@@ -109,12 +172,12 @@ void scene_spotlights_tick(int cnt) {
 	// We do everything on a nominal 256x256 scale and then scale up.
 	int offsetx, offsety;
 
-	offsetx = (128 + (128 * sinf(((float)cnt) / 800))) * scale_x;
-	offsety = (128 + (128 * sinf(((float)cnt) / 2000))) * scale_y;
+	offsetx = (128 + (128 * dmsin(((float)cnt) / 800))) * scale_x;
+	offsety = (128 + (128 * dmsin(((float)cnt) / 2000))) * scale_y;
 	backend_bitplane[1].data = backend_bitplane[1].data_start + (offsety * backend_bitplane[1].stride) + (offsetx / 8);
 
 	offsetx = (30 * scale_x);
-	offsety = (128 + (128 * sinf(1.0 + ((float)cnt) / 1200))) * scale_y;
+	offsety = (128 + (128 * dmsin(1.0 + ((float)cnt) / 1200))) * scale_y;
 	backend_bitplane[2].data = backend_bitplane[2].data_start + (offsety * backend_bitplane[2].stride) + (offsetx / 8);
 }
 
@@ -156,13 +219,13 @@ void scene_votevotevote_tick(int ms)
 		return;
 
 	// TODO we only need to clear the bounding box.
-	for(int i = 0; i < 4; i++) {
+	for(int i = 0; i < 3; i++) {
 		planar_clear(&backend_bitplane[i]);
 	}
 
-	int top_text_idx = random() % votevotevote_topline_count;
-	int mid_text_idx = random() % votevotevote_midline_count;
-	int bot_text_idx = random() % votevotevote_botline_count;
+	int top_text_idx = backend_random() % votevotevote_topline_count;
+	int mid_text_idx = backend_random() % votevotevote_midline_count;
+	int bot_text_idx = backend_random() % votevotevote_botline_count;
 
 	// ensure we don't pick the same thing twice.
 	if(top_text_idx == votevotevote_top) 

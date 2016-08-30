@@ -64,7 +64,7 @@ DEMO = [
 		#('after', 'pause', {'ms': 500}),
 		('after', 'mod', {'type': 'start', 'name': 'data/stateldr.mod'}),
 		# Girl with gun displayed inside hand
-		('after', 'split_anim', {'name': '002c00', 'from': 0, 'to': 141, 'plane': 1}),
+		('after', 'split_anim', {'name': '002c00', 'from': 0, 'to': 141, 'plane': 1, 'xor': 1}),
 		('after', 'clear', {'plane': 1}),
 		# Hand zooms out; dancing Bond girls. Frame 51 is skipped because it's weird (draws two hands almost over each other)
 		# xor is manually disabled -- this is probably also encoded in draw cmds but whatever.
@@ -113,7 +113,7 @@ DEMO = [
 		('after', 'starteffect', {'name': 'nothing'}),
 
 		# VOTE! VOTE! VOTE!
-		('after', 'scene', {'name': 'votevotevote1', 'planes': (BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1)}),
+		('after', 'scene', {'name': 'votevotevote1', 'planes': (BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_OFF, BITPLANE_OFF)}),
 		('after', 'clear', {'plane': 'all'}),
 		# black-on-white version
 		('after', 'alternate_palette', {'idx': 0, 'values': (0xffeeffff, 0xff000000, 0xff779999, 0xffddeeee, 0xff114444, 0xff447777, 0xff003333, 0xffaaaadd)}),
@@ -225,6 +225,7 @@ CMD_ALTERNATE_PALETTE = 11
 CMD_USE_ALTERNATE_PALETTE = 12
 CMD_SCENE = 13
 CMD_SCENE_INDEX = 14
+CMD_MBIT = 15
 
 NET_USE_OK = False
 MAX_FILE_LENGTH = 1024 * 1024
@@ -357,7 +358,7 @@ def encode_split_anim(wad, args):
 			raise RuntimeError("Couldn't find anims for requested frames")
 
 def encode_end(wad, args):
-	return 0, struct.pack(ENDIAN + 'I', CMD_END)
+	return 0, struct.pack(ENDIAN + 'II', CMD_END, 1 if args.get('end_scene', False) else 0)
 
 def encode_pause(wad, args):
 	return args['ms'], struct.pack(ENDIAN + 'I', CMD_PAUSE)
@@ -384,6 +385,13 @@ def encode_ilbm(wad, args):
 	fade_in_ms = args.get('fadein_ms', 0)
 
 	return fade_in_ms, struct.pack(ENDIAN + 'IIII', CMD_ILBM, file_idx, display_type, fade_in_ms)
+
+def encode_mbit(wad, args):
+	# mbit is a compressed planar file format used by the Pebble demo
+	get_file(args['name'])
+	file_idx = wad.add(args['name'])
+
+	return 0, struct.pack(ENDIAN + 'II', CMD_MBIT, file_idx)
 
 def encode_sound(wad, args):
 	get_file(args['name'])
@@ -496,19 +504,33 @@ def get_demo_sequence(wad, choreography):
 	# Returns an encoded demo sequence.
 	encoded = []
 
-	# Preprocess animation splits. This is ugly...
-	split_anim_choreography = []
-	for elem in choreography:
-		if elem[1] == 'split_anim':
-			first = True
-			for split_anim in encode_split_anim(wad, elem[2]):
-				if first:
-					split_anim_choreography.append((elem[0],) + split_anim)
-					first = False
+	# Prepropcessors
+	def preprocess_split_anim(choreography):
+		for elem in choreography:
+			if elem[1] == 'split_anim':
+				first = True
+				for split_anim in encode_split_anim(wad, elem[2]):
+					if first:
+						yield (elem[0],) + split_anim
+						first = False
+					else:
+						yield ('after',) + split_anim
+			else:
+				yield elem
+	
+	def preprocess_scene_ends(choreography):
+		first_scene = True
+		for elem in choreography:
+			if elem[1] == 'scene':
+				if first_scene:
+					first_scene = False
 				else:
-					split_anim_choreography.append(('after',) + split_anim)
-		else:
-			split_anim_choreography.append(elem)
+					yield('after', 'end', {'end_scene': True})
+
+			yield elem
+
+	# Preprocess animation splits. This is ugly...
+	choreography = preprocess_split_anim(preprocess_scene_ends(choreography))
 
 	previous_start = 0 # ms
 	previous_end = 0 # ms
@@ -516,7 +538,7 @@ def get_demo_sequence(wad, choreography):
 	scene_start = [] # (ms, position-in-file)
 
 	byte_position = 0
-	for entry in split_anim_choreography:
+	for entry in choreography:
 
 		this_entry_ms, encoded_entry = encode_demo_entry(wad, entry)
 		
@@ -546,25 +568,23 @@ def get_demo_sequence(wad, choreography):
 	# Create the scene index and stick it at the start. The scene index consists of
 	# (uint32_t ms, uint32_t byte-offset-inside-choreography)
 	# ... for each scene.
+	scene_start.append((0xffffffff, byte_position)) # EOF with special MS value
 	encoded.insert(0, SceneIndexEntry(scene_start).serialise())
 
 	return b''.join(encoded)
 	print("Scene start:", scene_start)
 
-def build_demo():
-	wad = Wad(ENDIAN)
-	encoded = get_demo_sequence(wad, DEMO)
-	wad.add_bin(encoded, is_choreography=True)
-	wad.write('sota.wad')
-	print("wrote sota.wad")
-
-def build_watchface(choreography):
+def build_demo(choreography, filename):
 	wad = Wad(ENDIAN)
 	encoded = get_demo_sequence(wad, choreography)
+	print("Choreography length: %d bytes" %(len(encoded),))
 	wad.add_bin(encoded, is_choreography=True)
-	wad.write('sota-pebble.wad')
-	print('wrote sota-pebble.wad')
+	central_directory_size = wad.write(filename)
+	print("wrote %s (central directory size: %d)" % (filename, central_directory_size))
+
+def build_watchface(choreography):
+	build_demo(choreography, 'sota-pebble.wad')
 
 if __name__ == '__main__':
-	build_demo()
+	build_demo(DEMO, 'sota.wad')
 

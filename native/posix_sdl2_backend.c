@@ -10,15 +10,30 @@
 #include <time.h>
 #include <sys/time.h>
 #include <assert.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <stdarg.h>
+
 #include "endian_compat.h"
 #include "backend.h"
 #include "minmax.h"
 #include "iff-font.h"
+#include "wad.h"
+#include "choreography.h"
+#include "choreography_commands.h"
 
 SDL_Window *window;
 SDL_Renderer *renderer;
 SDL_Texture *texture; // which we will update every frame.
 int window_width, window_height;
+
+uint8_t *wad; // the entire wad
+
+/* Frame rate the demo runs at. This doesn't affect the speed of the animations, 
+ * which run at 25 fps */
+#define MS_PER_FRAME 20
 
 /* Current palette */
 uint32_t palette[32];
@@ -191,9 +206,58 @@ void backend_render()
 	SDL_RenderPresent(renderer);
 }
 
+static uint8_t *read_entire_wad(const char *filename) {
+	uint8_t *buf;
+	
+	int h = open(filename, O_RDONLY);
+	if(h < 0) {
+		perror(filename);
+		return NULL;
+	}
 
-bool backend_init(int width, int height, bool fullscreen)
+	struct stat statbuf;
+	if(fstat(h, &statbuf) != 0)  {
+		perror("fstat");
+		close(h);
+		return NULL;
+	}
+
+	buf = malloc(statbuf.st_size);
+	if(buf == NULL) {
+		perror("malloc");
+		close(h);
+		return NULL;
+	}
+
+	ssize_t to_read = statbuf.st_size;
+	uint8_t *current = buf;
+	while(to_read) {
+		ssize_t amt_read = read(h, current, to_read);
+		if(amt_read < 0) {
+			fprintf(stderr, "read_entire_file: error reading\n");
+			close(h);
+			free(buf);
+			return NULL;
+		}
+		to_read -= amt_read;
+		current += amt_read;
+	}
+
+	close(h);
+
+	return buf;
+}
+
+
+bool backend_init(int width, int height, bool fullscreen, const void *wad_name)
 {
+	/* Read WAD */
+	wad = read_entire_wad(wad_name ? (const char *)wad_name: "sota.wad");
+	if(wad == NULL) {
+		fprintf(stderr, "Couldn't read wad\n");
+		return false;
+	}
+
 	/* Graphics initialisation */
 	if(SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO) != 0) {
 		fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -279,14 +343,14 @@ struct Bitplane *backend_allocate_bitplane(int idx, int width, int height)
 }
 
 void backend_allocate_standard_bitplanes() {
-	backend_delete_bitplanes();
+	backend_set_new_scene();
 
 	for(int i = 0; i < 5; i++) {
 		backend_allocate_bitplane(i, window_width, window_height);
 	}
 }
 
-void backend_delete_bitplanes() {
+void backend_set_new_scene() {
 	for(int i = 0; i < 5; i++) {
 		backend_bitplane[i].data_start = backend_bitplane[i].data = NULL;
 		backend_bitplane[i].width = backend_bitplane[i].height = backend_bitplane[i].stride = 0;
@@ -315,6 +379,7 @@ void *backend_reserve_memory(size_t amt)
 
 void backend_shutdown()
 {
+	free(wad);
 	free(framebuffer);
 
 	SDL_DestroyRenderer(renderer);
@@ -348,7 +413,6 @@ void backend_set_palette_element(int idx, uint32_t element) {
 #define FONT_PLANES_HEIGHT 256
 bool backend_font_load(int file_idx, uint32_t startchar, uint32_t numchars, uint16_t *positions)
 {
-	/* The font is loaded directly into the bitplanes */
 	if(loaded_font_idx >= 0) {
 		backend_font_unload();
 	}
@@ -388,6 +452,8 @@ void backend_font_unload()
 				= 0;
 		}
 	}
+
+	ifffont_unload();
 }
 
 // font drawing: pass -1 as x co-ordinate to centre 
@@ -404,5 +470,73 @@ void backend_font_draw(int numchars, char *text, int x, int y)
 int backend_font_get_height()
 {
 	return ifffont_get_height();
+}
+
+void *backend_wad_load_choreography_for_scene_ms(int ms)
+{
+	uint8_t *choreography = wad + wad_get_choreography_offset(wad);
+
+	return choreography + choreography_find_offset_for_scene(choreography, ms, NULL);
+}
+
+/* Load a file */
+void *backend_wad_load_file(int file_idx, size_t *size_out)
+{
+	// in this backend the entire wad is mapped so no copying or loading required.
+	uint32_t offset = wad_get_file_offset(wad, file_idx);
+
+	if(size_out != NULL) {
+		*size_out = wad_get_file_size(wad, file_idx);
+	}
+
+	return (void *)(wad + offset);
+}
+
+void backend_wad_unload_file(void *data)
+{
+	/* wad is permanently loaded */
+}
+
+void backend_run(int ms)
+{
+	uint64_t starttime = backend_get_time_ms();
+
+	/* If 'ms' is initially >0, backdate startime */
+	starttime -= ms;
+
+	uint8_t *choreography = backend_wad_load_choreography_for_scene_ms(ms);
+	choreography_prepare_to_run(choreography, ms);
+
+	bool keepgoing = true;
+	while(keepgoing) {
+		uint64_t frametime = backend_get_time_ms();
+		ms = frametime - starttime;
+
+		choreography_do_frame(ms);
+
+		int64_t time_remaining_this_frame = MS_PER_FRAME - (backend_get_time_ms() - frametime);
+
+		backend_render();
+
+		keepgoing = backend_should_display_next_frame(time_remaining_this_frame);
+	}
+
+	backend_wad_unload_file(choreography);
+}
+
+void backend_debug(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+	putc('\n', stdout);
+
+}
+
+int backend_random()
+{
+	return rand();
 }
 

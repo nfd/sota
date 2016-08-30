@@ -6,8 +6,14 @@
 #include <pthread.h>
 #include <unistd.h>
 
-#include "files.h"
+#include "wad.h"
 #include "sound.h"
+#include "backend.h"
+
+#ifdef EMULATE_FMEMOPEN
+#include "fmemopen.h"
+#endif
+
 
 static bool nosound;
 
@@ -18,6 +24,19 @@ static SAMPLE *current_sample;
 int snd_file_idx;
 
 static pthread_t audio_thread;
+
+FILE *file_open(int idx)
+{
+	size_t size;
+
+	uint8_t *data = backend_wad_load_file(idx, &size);
+
+	if(data == NULL) {
+		return NULL;
+	} else {
+		return fmemopen(data, size, "r");
+	}
+}
 
 static MODULE *wz_load_mod(int idx)
 {

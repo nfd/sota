@@ -5,12 +5,12 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
-#include <strings.h>
 #include <stdlib.h>
 #include "endian_compat.h"
 #include "graphics.h"
 #include "backend.h"
 #include "minmax.h"
+#include "heap.h"
 
 /* Data related to the polygon fill algorithm. Must be initialised because it depends on the height. */
 struct poly_elem {
@@ -27,9 +27,9 @@ struct poly_elem **edge_table;
 
 int graphics_init() {
 	// edge_table is used by the scanline polygon rendering algorithm
-	edge_table = backend_reserve_memory(window_height * sizeof(struct poly_elem *));
+	edge_table = heap_alloc(window_height * sizeof(struct poly_elem *));
 	if(edge_table == NULL) {
-		perror("edge_table");
+		backend_debug("edge_table: couldn't alloc");
 		return -1;
 	}
 
@@ -54,14 +54,14 @@ static inline uint32_t lerp_byte(int idx, uint32_t byte_from, uint32_t byte_to, 
 
 	int lerped = ((((int)byte_to) - ((int)byte_from)) * current_step) / total_steps;
 
-	return min(0xff, max(byte_from + lerped, 0));
+	return min(0xff, byte_from + lerped);
 }
 
 void graphics_lerp_palette(size_t num_elements, uint32_t *from, uint32_t *to, int current_step, int total_steps) {
 	if(current_step < 0 || current_step > total_steps || num_elements > 32)
 		return;
 
-	for(int i = 0; i < num_elements; i++) {
+	for(unsigned i = 0; i < num_elements; i++) {
 		backend_set_palette_element(i, (lerp_byte(3, from[i], to[i], current_step, total_steps) << 24)
 			| (lerp_byte(2, from[i], to[i], current_step, total_steps) << 16)
 			| (lerp_byte(1, from[i], to[i], current_step, total_steps) << 8)
@@ -363,7 +363,9 @@ void planar_draw_thick_circle(struct Bitplane *bitplane, int xc, int yc, int rad
 
 void planar_clear(struct Bitplane *plane)
 {
-	bzero(plane->data_start, plane->stride * plane->height);
+	if(plane->data_start) {
+		memset(plane->data_start, 0, plane->stride * plane->height);
+	}
 }
 
 void graphics_bitplane_blit(struct Bitplane *from, struct Bitplane *to, int sx, int sy, int w, int h, int dx, int dy)

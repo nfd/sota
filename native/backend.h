@@ -33,13 +33,13 @@ extern int window_width, window_height;
 */
 extern struct Bitplane backend_bitplane[5]; // the bitplanes
 
-void backend_delete_bitplanes();
+void backend_set_new_scene();
 struct Bitplane *backend_allocate_bitplane(int idx, int width, int height);
 void backend_allocate_standard_bitplanes();
 void backend_copy_bitplane(struct Bitplane *dst, struct Bitplane *src);
 
 /* Backend-specific startup and shutdown */
-bool backend_init(int width, int height, bool fullscreen); 
+bool backend_init(int width, int height, bool fullscreen, const void *wad_name); 
 void backend_shutdown();
 
 /* Return a 64-bit time value representing milliseconds. This value should be
@@ -63,8 +63,8 @@ void backend_render();
 void *backend_reserve_memory(size_t size);
 
 /* Palette manipulation. The external palette is uin32_t. */
-void backend_set_palette(size_t num_elements, uint32_t *elements);
-void backend_get_palette(size_t num_elements, uint32_t *elements);
+void backend_set_palette(int num_elements, uint32_t *elements);
+void backend_get_palette(int num_elements, uint32_t *elements);
 void backend_set_palette_element(int idx, uint32_t element);
 
 /* Font drawing. This is backend-specific since some backends can't
@@ -74,6 +74,23 @@ void backend_font_unload();
 // font drawing: pass -1 as x co-ordinate to centre 
 void backend_font_draw(int numchars, char *text, int x, int y);
 int backend_font_get_height();
+
+/* WAD access. Data are loaded into the (heap.c) heap and ownership of the
+ * memory is transferred to the caller. */
+/* Load choreography -- the choreography data is large so only load a scene at a time */
+void *backend_wad_load_choreography_for_scene_ms(int ms);
+/* Load a file */
+void *backend_wad_load_file(int file_idx, size_t *size_out);
+void backend_wad_unload_file(void *);
+
+/* Random numbers */
+int backend_random();
+
+/* Debug prints */
+void backend_debug(const char *fmt, ...);
+
+/* Run the entire thing */
+void backend_run(int ms);
 
 #endif // BACKEND_H
 

@@ -9,9 +9,10 @@
 #include "scene.h"
 #include "choreography.h"
 #include "sound.h"
-#include "files.h"
 #include "iff-font.h"
 #include "posix_sdl2_backend.h"
+#include "heap.h"
+#include "tinf/src/tinf.h"
 
 #define DEFAULT_WIDTH 640
 #define DEFAULT_HEIGHT 512
@@ -90,13 +91,11 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	if(backend_init(width, height, fullscreen) == false) {
-		fprintf(stderr, "couldn't init backend\n");
-	}
+	heap_reset();
+	tinf_init();
 
-	if(files_init(wad_filename) == false) {
-		fprintf(stderr, "couldn't read wad\n");
-		return 1;
+	if(backend_init(width, height, fullscreen, wad_filename) == false) {
+		fprintf(stderr, "couldn't init backend\n");
 	}
 
 	if(ifffont_init() == false) {
@@ -127,7 +126,7 @@ int main(int argc, char **argv) {
 	anim_init();
 	scene_init();
 
-	choreography_run_demo(start_ms);
+	backend_run(start_ms);
 
 #if 0
 	background_init_concentric_circles();
@@ -164,7 +163,6 @@ int main(int argc, char **argv) {
 
 	graphics_shutdown();
 	sound_deinit();
-	files_deinit();
 	backend_shutdown();
 }
 

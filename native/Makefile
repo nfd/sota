@@ -1,8 +1,8 @@
-OBJS=main.o graphics.o anim.o scene.o files.o choreography.o sound.o iff.o iff-font.o posix_sdl2_backend.o
+OBJS=main.o graphics.o anim.o scene.o wad.o choreography.o sound.o iff.o iff-font.o posix_sdl2_backend.o heap.o mbit.o tinf/src/adler32.o tinf/src/crc32.o tinf/src/tinflate.o tinf/src/tinfzlib.o
 
 LIBS=-lSDL2 -lm -lmikmod -lpthread
-CFLAGS=-g -O2 -std=c99 -Wall -Werror -fsanitize=address -Wno-unused-function
-#CFLAGS=-g -O0 -std=c99 -Wall -Werror -Wno-unused-function
+CFLAGS=-g -O2 -std=c99 -Wall -Werror -fsanitize=address -Wno-unused-function -DHEAP_SIZE_KB=512
+#CFLAGS=-g -O0 -std=c99 -Wall -Werror -Wno-unused-function -DHEAP_SIZE_KB=512
 
 # POSIX backend
 CFLAGS += -DBACKEND_SUPPORTS_SOUND=1 -DBACKEND_SUPPORTS_ILBM=1
@@ -24,5 +24,5 @@ data:
 
 .PHONY: clean
 clean:
-	rm -f *.o sota
+	rm -f $(OBJS) sota
 

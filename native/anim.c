@@ -10,7 +10,6 @@
 
 #include "anim.h"
 #include "graphics.h"
-#include "files.h"
 #include "backend.h"
 
 #define ANIM_SOURCE_WIDTH 256
@@ -70,7 +69,7 @@ void anim_draw(struct animation *anim, int frame_idx)
 	/* num_objects should be 1 through to 6, indicating the number of objects in the frame */
 	uint8_t num_objects = *data++;
 	if(num_objects < 1 || num_objects > 6) {
-		fprintf(stderr, "anim_draw: num_objects: %d\n", num_objects);
+		backend_debug("anim_draw: num_objects: %d\n", num_objects);
 		return;
 	}
 
@@ -124,7 +123,7 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 			break;
 		}
 		default:
-			fprintf(stderr, "Unknown command %x\n", draw_cmd);
+			backend_debug("Unknown command %x\n", draw_cmd);
 			break;
 	}
 	return data;
@@ -173,15 +172,19 @@ struct animation *anim_load(int data_file, int anim_idx) {
 	 * ...    : animation data
 	*/
 	if(current_anim.data_file != data_file) {
+		if(prev_anim.data_file != -1) {
+			backend_wad_unload_file(prev_anim.data);
+		}
+
 		prev_anim = current_anim;
 
 		current_anim.indices = current_anim.data = NULL;
 
-		ssize_t size;
+		size_t size;
 
-		uint8_t *anim_file = file_get(data_file, &size);
+		uint8_t *anim_file = backend_wad_load_file(data_file, &size);
 		if(anim_file == NULL) {
-			fprintf(stderr, "anim load fail\n");
+			backend_debug("anim load fail\n");
 			anim_destroy(&current_anim);
 			return NULL;
 		}

@@ -4,10 +4,10 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "files.h"
 #include "graphics.h"
 #include "anim.h"
 #include "scene.h"
+#include "mbit.h"
 
 #ifdef BACKEND_SUPPORTS_SOUND
 #include "sound.h"
@@ -18,6 +18,7 @@
 #endif
 
 #include "backend.h"
+#include "choreography.h"
 #include "choreography_commands.h"
 
 #define MOD_START 1
@@ -36,18 +37,6 @@
 #define BITPLANE_1X1 1
 #define BITPLANE_2X1 2
 #define BITPLANE_2X2 3
-
-/* Frame rate the demo runs at. This doesn't affect the speed of the animations, 
- * which run at 25 fps */
-#define MS_PER_FRAME 20
-
-extern struct backend_interface_struct g_backend;
-
-struct choreography_header {
-	uint32_t start_ms;
-	uint32_t length;
-	uint32_t cmd;
-};
 
 struct choreography_clear {
 	struct choreography_header header;
@@ -133,15 +122,14 @@ struct choreography_scene {
 	uint8_t name[];
 };
 
-struct choreography_scene_index_item {
-	uint32_t ms;
-	uint32_t offset;
+struct choreography_mbit {
+	struct choreography_header header;
+	uint32_t file_idx;
 };
 
-struct choreography_scene_index {
+struct choreography_end {
 	struct choreography_header header;
-	uint32_t count;
-	struct choreography_scene_index_item items[];
+	uint32_t end_of_scene;
 };
 
 static uint8_t *choreography;
@@ -152,7 +140,7 @@ static struct {
 	// animations
 	struct animation *current_animation; // the anim data
 	struct choreography_anim *current_animation_info; // the choreography data
-	int last_drawn_frame; // to avoid unnecessary redraws
+	unsigned last_drawn_frame; // to avoid unnecessary redraws
 
 	// palette fades
 	uint32_t fade_from[32]; // the constants feel so naughty
@@ -176,8 +164,8 @@ static inline struct choreography_header *next_header(struct choreography_header
 
 bool choreography_init()
 {
-	choreography = file_get_choreography();
-	pos = (struct choreography_header *)choreography;
+	choreography = NULL;
+	pos = NULL;
 
 	state.current_animation = NULL;
 	state.current_animation_info = NULL;
@@ -187,7 +175,7 @@ bool choreography_init()
 
 	state.effect_deinit = state.effect_tick = NULL;
 
-	return choreography != NULL;
+	return true;
 }
 
 static void cmd_clear(struct choreography_clear *clear)
@@ -248,7 +236,7 @@ static void cmd_anim(struct choreography_anim *anim) {
 	state.current_animation_info = anim;
 
 	if(state.current_animation == NULL) {
-		fprintf(stderr, "Couldn't load animation %x\n", anim->data_file);
+		backend_debug("Couldn't load animation %x\n", (unsigned int)(anim->data_file));
 	}
 
 	anim_set_bitplane(&backend_bitplane[anim->bitplane]);
@@ -280,6 +268,7 @@ static void cmd_ilbm(struct choreography_ilbm *ilbm) {
 
 	iff_load(ilbm->file_idx, &iff);
 	iff_display(&iff, 0, 0, window_width, window_height, &(state.fade_count), state.fade_to, backend_bitplane);
+	iff_unload(&iff);
 
 	if(ilbm->fade_in_ms == 0) {
 		backend_set_palette(state.fade_count, state.fade_to);
@@ -300,6 +289,16 @@ static void cmd_sound(struct choreography_sound *sound) {
 #ifdef BACKEND_SUPPORTS_SOUND
 	sound_sample_play(sound->file_idx);
 #endif
+}
+
+static void cmd_mbit(struct choreography_mbit *mbit) {
+	size_t size;
+
+	uint8_t *data = backend_wad_load_file(mbit->file_idx, &size);
+	if(data) {
+		mbit_display(data, &backend_set_palette, backend_bitplane);
+		backend_wad_unload_file(data);
+	}
 }
 
 static void cmd_starteffect(int ms, struct choreography_starteffect *effect) {
@@ -334,7 +333,7 @@ static void cmd_starteffect(int ms, struct choreography_starteffect *effect) {
 			state.effect_deinit = scene_deinit_copperpastels;
 			break;
 		default:
-			fprintf(stderr, "Unknown effect %d ignored\n", effect->effect_num);
+			backend_debug("Unknown effect %u ignored\n", (unsigned int)(effect->effect_num));
 			break;
 	}
 }
@@ -345,7 +344,7 @@ static void cmd_loadfont(int ms, struct choreography_loadfont *loadfont) {
 
 static void cmd_scene(int ms, struct choreography_scene *scene) {
 	/* Initialise bitplanes */
-	backend_delete_bitplanes();
+	backend_set_new_scene();
 	for(int i = 0; i < 5; i++) {
 		switch(scene->bitplane_style[i]) {
 			case BITPLANE_OFF:
@@ -360,7 +359,7 @@ static void cmd_scene(int ms, struct choreography_scene *scene) {
 				backend_allocate_bitplane(i, window_width * 2, window_height * 2);
 				break;
 			default:
-				printf("Unknown bitplane style\n");
+				backend_debug("Unknown bitplane style\n");
 				break;
 		}
 	}
@@ -415,17 +414,26 @@ static void create_state_item(int ms, struct choreography_header *pos)
 		case CMD_SCENE_INDEX:
 			// Ignored during playback
 			break;
+		case CMD_MBIT:
+			cmd_mbit((struct choreography_mbit *)pos);
+			break;
 		default:
 			/* This is bad */
-			fprintf(stderr, "Unknown choreography command %x\n", pos->cmd);
+			backend_debug("Unknown choreography command %x\n", (unsigned int)(pos->cmd));
 			break;
 	}
 }
 
-static void create_new_state(int ms)
+static inline bool end_of_demo()
+{
+	return pos->cmd == CMD_END && ((struct choreography_end *)pos)->end_of_scene == 0;
+}
+
+static void create_new_state(unsigned ms)
 {
 	/* Create the state */
-	while(pos->start_ms <= ms && pos->cmd != CMD_END) {
+
+	while(pos->start_ms <= ms && !end_of_demo()) {
 		create_state_item(ms, pos);
 		pos = next_header(pos);
 	}
@@ -438,7 +446,7 @@ static void run(int ms) {
 	if(state.current_animation_info) {
 		/* Work out what frame we're supposed to be on. */
 		int anim_ms = ms - state.current_animation_info->header.start_ms;
-		int anim_frame = (anim_ms / state.current_animation_info->ms_per_frame) + state.current_animation_info->frame_from;
+		unsigned anim_frame = (anim_ms / state.current_animation_info->ms_per_frame) + state.current_animation_info->frame_from;
 
 		if(anim_frame > state.current_animation_info->frame_to) {
 			/* We're done with this animation */
@@ -474,53 +482,53 @@ static void run(int ms) {
 	}
 }
 
-static void skip_to_start_ms(int ms) {
+static void skip_to_start_ms(unsigned ms) {
 	/* Advance to the requested position. */
 	pos = (struct choreography_header *)choreography;
-	if(pos->cmd != CMD_SCENE_INDEX) {
-		fprintf(stderr, "no scene index!\n");
-		return;
-	}
-
-	/* Use the scene index to skip ahead if possible. */
-	struct choreography_scene_index *idx = (struct choreography_scene_index *)pos;
-	for(int scene_num = 0; scene_num < idx->count; scene_num ++) {
-		if(idx->items[scene_num].ms < ms) {
-			pos = (struct choreography_header *)(choreography + idx->items[scene_num].offset);
-		}
-	}
-
-	/* Linear search through this scene to get to the exact point */
+	/* Linear search to get to the exact point */
 	while(pos->start_ms < ms && pos->cmd != CMD_END) {
 		create_state_item(ms, pos);
 		pos = next_header(pos);
 	}
 }
 
-void choreography_run_demo(int ms)
+void choreography_prepare_to_run(uint8_t *choreography_in, int ms)
 {
+	choreography = choreography_in;
 	skip_to_start_ms(ms);
 
-	bool keepgoing = true;
-	uint64_t starttime = backend_get_time_ms();
+	//backend_wad_unload_file(choreography);
+}
 
-	/* If 'ms' is initially >0, backdate startime */
-	starttime -= ms;
+// Return false if the next frame is end of scene or end of demo, true otherwise.
+bool choreography_do_frame(int ms)
+{
+	create_new_state(ms);
+	run(ms);
 
-	while(keepgoing) {
-		uint64_t frametime = backend_get_time_ms();
-		ms = frametime - starttime;
+	return pos->cmd == CMD_END;
+}
 
-		create_new_state(ms);
-		run(ms);
-
-		int64_t time_remaining_this_frame = MS_PER_FRAME - (backend_get_time_ms() - frametime);
-
-		//anim_draw(anim, i);
-		//background_concentric_circles_tick(i);
-		backend_render();
-
-		keepgoing = backend_should_display_next_frame(time_remaining_this_frame);
+// Find a scene offset using the choreography scene index.
+uint32_t choreography_find_offset_for_scene(uint8_t *choreography, unsigned ms, uint32_t *next_scene_offset)
+{
+	if(((struct choreography_header* )choreography)->cmd != CMD_SCENE_INDEX) {
+		backend_debug("no scene index!\n");
+		return 0;
 	}
+
+	/* Use the scene index to find the right part. */
+	struct choreography_scene_index *idx = (struct choreography_scene_index *)choreography;
+
+	for(int scene_num = idx->count - 1; scene_num >= 0; scene_num --) {
+		if(idx->items[scene_num].ms <= ms) {
+			if(next_scene_offset)
+				*next_scene_offset = idx->items[scene_num + 1].offset;
+
+			return idx->items[scene_num].offset;
+		} 
+	}
+
+	return 0;
 }
 

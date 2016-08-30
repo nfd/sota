@@ -57,7 +57,8 @@ class Wad:
 
 	def write(self, filename):
 		# calculate sizes
-		next_file_position = 4 + 4 + 4 + (len(self.files) * 4 * 2)
+		first_file_position = 4 + 4 + 4 + (len(self.files) * 4 * 2)
+		next_file_position = first_file_position
 
 		with open(filename, 'wb') as h:
 			h.write(b'mess')
@@ -71,4 +72,7 @@ class Wad:
 			# write data
 			for filelength, filedata in self.files:
 				h.write(filedata)
+
+		return first_file_position
+
 

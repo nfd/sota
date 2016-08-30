@@ -13,6 +13,7 @@ struct BitmapHeader {
 } __attribute__((__packed__));
 
 struct LoadedIff {
+	uint8_t *data;
 	struct BitmapHeader *bmhd;
 	int8_t *body;
 	uint32_t cmap_count;
@@ -20,6 +21,7 @@ struct LoadedIff {
 };
 
 bool iff_load(int file_idx, struct LoadedIff *iff);
+void iff_unload(struct LoadedIff *iff);
 void iff_get_dimensions(struct LoadedIff *iff, uint16_t *w, uint16_t *h);
 bool iff_display(struct LoadedIff *iff, int dst_x, int dst_y, int dst_w, int dst_h, uint32_t *num_colours, uint32_t *palette_out, struct Bitplane *planes);
 

@@ -83,6 +83,10 @@ bool ifffont_load(int file_idx, uint32_t startchar, uint32_t numchars, uint16_t 
 
 	return true;
 }
+void ifffont_unload()
+{
+	iff_unload(&font.iff);
+}
 
 void ifffont_uninit()
 {

@@ -9,7 +9,6 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#include "files.h"
 #include "graphics.h"
 #include "iff.h"
 #include "backend.h"
@@ -192,29 +191,34 @@ static void iff_stretch(uint16_t src_w, uint16_t src_h, uint16_t dst_x, uint16_t
 
 bool iff_load(int file_idx, struct LoadedIff *iff)
 {
-	ssize_t size;
-	uint8_t *data = file_get(file_idx, &size);
+	size_t size;
+	uint8_t *data = backend_wad_load_file(file_idx, &size);
 	if(data == NULL) {
 		fprintf(stderr, "iff_load: data\n");
 		return false;
 	}
+
+	iff->data = data;
 
 	uint8_t *end = data + size;
 
 	iff->bmhd = (struct BitmapHeader *)iff_find_chunk(data, end, IFF_BMHD, NULL);
 	if(iff->bmhd == NULL) {
 		fprintf(stderr, "iff_load: bmhd\n");
+		backend_wad_unload_file(data);
 		return false;
 	}
 
 	if(iff->bmhd->masking) {
 		fprintf(stderr, "iff_display: can't handle masked images\n"); // it's not hard, I'm just lazy
+		backend_wad_unload_file(data);
 		return false;
 	}
 
 	iff->body = (int8_t *)iff_find_chunk(data, end, IFF_BODY, NULL);
 	if(iff->body == NULL) {
 		fprintf(stderr, "iff_load: body\n");
+		backend_wad_unload_file(data);
 		return false;
 	}
 
@@ -222,6 +226,11 @@ bool iff_load(int file_idx, struct LoadedIff *iff)
 	iff->cmap_count /= 3;
 
 	return true;
+}
+
+void iff_unload(struct LoadedIff *iff)
+{
+	backend_wad_unload_file(iff->data);
 }
 
 void iff_get_dimensions(struct LoadedIff *iff, uint16_t *w, uint16_t *h)
