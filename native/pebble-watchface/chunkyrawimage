@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+
+"""
+Format:
+
+4 bytes		'img*'
+2 bytes     width
+2 bytes     height
+2 bytes     # bitplanes
+2 bytes     # of palette entries
+4 bytes * n palette entry
+4 bytes     length of plane 0 data (compressed with zlib)
+n bytes     plane 0 data
+4 bytes     length of plane 1 data (compressed with zlib)
+n bytes     plane 1 data
+...
+
+All is little endian
+"""
+
+import argparse
+import math
+import zlib
+import struct
+
+from PIL import Image
+
+MAX_CHUNK_SIZE = 4096
+
+def to_chunky(filename):
+	source = Image.open(filename)
+
+	bit_count = 0
+
+	# assume we'll always have black.
+	print(source.palette.getdata())
+
+	width, height = source.size
+
+	chunk_size = (MAX_CHUNK_SIZE // width) * width
+
+	chunky = []
+	for counter, b in enumerate(source.getdata()):
+		if counter % chunk_size == 0:
+			chunky.append([])
+
+		assert isinstance(b, int)
+		chunky[-1].append(b)
+
+	palette = []
+	return width, height, palette, [bytes(entry) for entry in chunky]
+
+def tuple_to_argb(t):
+	assert len(t) == 3
+	return (0xff << 24) \
+			| (t[0] << 16) \
+			| (t[1] << 8) \
+			| (t[2])
+
+def main():
+	parser = argparse.ArgumentParser()
+	parser.add_argument('input', help='input filename')
+	parser.add_argument('output', help='output filename')
+	args = parser.parse_args()
+
+	width, height, palette, chunky = to_chunky(args.input)
+
+	with open(args.output, 'wb') as h:
+		h.write(b'img*')
+		h.write(struct.pack('<HHH', width, height, len(palette)))
+		print(palette)
+		for entry in palette:
+			h.write(struct.pack('<I', tuple_to_argb(entry)))
+
+		print('uncompressed data # chunks', len(chunky))
+		for chunk in chunky:
+			zchunk = zlib.compress(chunk)
+			h.write(struct.pack('<I', len(zchunk)))
+			h.write(zchunk)
+
+if __name__ == '__main__':
+	main()
+

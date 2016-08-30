@@ -23,17 +23,8 @@
     "resources": {
       "media": [
 		  {"type": "raw",
-		  "name": "state_mbit",
-		  "file": "state.mbit"},
-		  {"type": "raw",
-		  "name": "of_mbit",
-		  "file": "of.mbit"},
-		  {"type": "raw",
-		  "name": "the_mbit",
-		  "file": "the.mbit"},
-		  {"type": "raw",
-		  "name": "art_mbit",
-		  "file": "art.mbit"}
+		  "name": "wad",
+		  "file": "sota-pebble.wad"}
 	  ]
     }
   }
