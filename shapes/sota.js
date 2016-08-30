@@ -18,14 +18,14 @@ var bpwidth = new Array();
 var bpheight = new Array();
 var bpoffset = new Array(); // start index for bitplane (to allow for scrolling)
 
+/*
 var palette = new Array(0xff000000, 0xff000000, 0xff007711, 0xff0000dd, 0xff770077, 0xff0077dd, 0xff111177, 0xff00bbbb,
 		0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000);
+		*/
 
 // debug palette
-/*
 var palette = new Array(0xff000000, 0xffffffff, 0xff007711, 0xff0000dd, 0xff770077, 0xff0077dd, 0xff111177, 0xff00bbbb,
 		0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000);
-*/
 
 
 function setup() {
@@ -76,8 +76,10 @@ function setup() {
 
 	//loadScript("script010800.json");
 	//loadScript("script067080.json");
-	loadScript("script067230.json");
-	//loadScript("script09e1b8.json");
+	//loadScript("script07789e.json");
+	//loadScript("script075c66.json");
+	loadScript("script08da00.json");
+	//loadScript("script078104.json");
 }
 
 function log(text) {
@@ -383,10 +385,10 @@ function draw_multiple(ctx, idx)
 	for(var i = 0; i < num_draws; i++) {
 		var cmd = data[idx++];
 
-		//log("draw cmd " + cmd.toString(16) + " idx " + (idx - 2) + " len " + data[idx]);
+		log("draw cmd " + cmd.toString(16) + " idx " + (idx - 2) + " len " + data[idx]);
 		if(cmd >= 0xd0 && cmd <= 0xdf) {
 			// we know what these are.
-			var bitplane_idx = draw_cmd_to_plane_idx(cmd);
+			var bitplane_idx = 0;
 
 			idx = draw(bitplane_idx, data, idx, drawn_in_plane[bitplane_idx]==0);
 			drawn_in_plane[bitplane_idx] = 1;
@@ -399,6 +401,8 @@ function draw_multiple(ctx, idx)
 			var tween_to    = current_position + ((data[idx++] << 8) + (data[idx++]));
 			var tween_t     = data[idx++]; // position in tween
 			var tween_count = data[idx++];
+
+			//log("Tween " + tween_from + " " + tween_to + " " + tween_t + " " + tween_count);
 
 			var shape = lerp_tween(tween_from, tween_to, tween_t, tween_count);
 			draw(bitplane_idx, shape, 0, drawn_in_plane[bitplane_idx]==0);
@@ -516,7 +520,7 @@ function loadScript(filename) {
 			indices = script["indices"];
 			data = script["data"];
 
-			background_init_concentric_circles();
+			//background_init_concentric_circles();
 			step();
 		}
 	}
