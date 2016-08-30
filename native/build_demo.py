@@ -582,9 +582,6 @@ def build_demo(choreography, filename):
 	central_directory_size = wad.write(filename)
 	print("wrote %s (central directory size: %d)" % (filename, central_directory_size))
 
-def build_watchface(choreography):
-	build_demo(choreography, 'sota-pebble.wad')
-
 if __name__ == '__main__':
 	build_demo(DEMO, 'sota.wad')
 

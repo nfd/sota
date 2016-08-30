@@ -96,5 +96,5 @@ def transform_demo(demo):
 	
 	return watch
 
-build_demo.build_watchface(transform_demo(build_demo.DEMO))
+build_demo.build_demo(transform_demo(build_demo.DEMO), 'pebble-watchface/resources/sota-pebble.wad')
 
