@@ -31,12 +31,16 @@ from pilutils import decode_lousy_pil_palette_data
 def align(amt, align):
 	return amt + ((align - (amt % align)) % align)
 
+def tuple_to_hex(elem):
+	return '%02x%02x%02x' % elem
+
 def to_planes(filename):
 	source = Image.open(filename)
 
 	bit_count = 0
 
 	palette = decode_lousy_pil_palette_data(source.palette.getdata())
+	print("Palette: ", [tuple_to_hex(elem) for elem in palette])
 	num_planes = math.ceil(math.log2(len(palette)))
 
 	planes = [[] for i in range(num_planes)]

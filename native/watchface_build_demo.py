@@ -49,9 +49,29 @@ def palette_boost(palette):
 
 	return [boost(elem) for elem in palette]
 
+FONTMAP_PALETTES = {
+		0: ( 0xff000000, 0xff3f4949, 0xff1b2323, 0xffc7dddc, 0xffedfefe, 0xff8c9d9d, 0xff637474, 0xffffffff ),
+		1: ( 0xffedfefe, 0xff8c9d9d, 0xffc7dddc, 0xff1b2323, 0xff000000, 0xff3f4949, 0xff637474, 0xffffffff ),
+}
+
+def resize_fontmap(fontmap):
+	resized = []
+
+	for i in range(0, len(fontmap), 4):
+		# sx and sy:
+		resized.append(fontmap[i] // 2)
+		resized.append(fontmap[i + 1] // 2)
+		# ex and ey:
+		resized.append(math.ceil(fontmap[i + 2] / 2))
+		resized.append(math.ceil(fontmap[i + 3] / 2))
+	
+	return resized
+
 def transform_demo(demo):
+
 	# Transform regular demo into watchface.
 	watch = []
+	current_scene = None
 
 	for element in demo:
 		discard = False
@@ -70,6 +90,13 @@ def transform_demo(demo):
 			watch.append((element[0], 'palette', {'values': palette_boost(element[2]['values'])}))
 		elif element[1] == 'palette':
 			watch.append((element[0], 'palette', {'values': palette_boost(element[2]['values'])}))
+		elif element[1] == 'alternate_palette':
+			if current_scene == 'votevotevote1':
+				# We need a custom palette unfortunately
+				element[2]['values'] = FONTMAP_PALETTES[element[2]['idx']]
+			else:
+				element[2]['values'] = palette_boost(element[2]['values'])
+			watch.append(element)
 		elif element[1] == 'mod':
 			# Remove music
 			pass
@@ -89,7 +116,10 @@ def transform_demo(demo):
 		elif element[1] == 'loadfont':
 			element[2]['name'] = element[2]['name'].replace('.iff', '.mbit')
 			# Watch font characters are half the size of regular.
-			element[2]['map'] = [position // 2 for position in element[2]['map']]
+			element[2]['map'] = resize_fontmap(element[2]['map'])
+			watch.append(element)
+		elif element[1] == 'scene':
+			current_scene = element[2]['name']
 			watch.append(element)
 		else:
 			watch.append(element)

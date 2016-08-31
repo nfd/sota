@@ -387,13 +387,13 @@ void backend_shutdown()
 	SDL_Quit();
 }
 
-void backend_get_palette(size_t num_elements, uint32_t *elements) {
+void backend_get_palette(int num_elements, uint32_t *elements) {
 	num_elements = min(num_elements, 32);
 
 	memcpy(elements, palette, num_elements * sizeof(uint32_t));
 }
 
-void backend_set_palette(size_t num_elements, uint32_t *elements) {
+void backend_set_palette(int num_elements, uint32_t *elements) {
 	memcpy(palette, elements, num_elements * sizeof(uint32_t));
 	for(int i = num_elements; i < 32; i++) {
 		palette[i] = 0xff000000;

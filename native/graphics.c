@@ -379,13 +379,32 @@ void graphics_bitplane_blit(struct Bitplane *from, struct Bitplane *to, int sx, 
 	uint8_t *src = from->data + src_offset;
 	uint8_t *dst = to->data   + dst_offset;
 
-	int bytes_per_row = (w + 7) / 8;
+	int end_byte = (sx + w + 7) / 8;
+	int bytes_per_row = end_byte - (sx / 8) - 2; // Skip first and last bytes as they are special cased.
+
+	uint8_t src_byte, dst_byte;
 
 	for(int y = 0; y < h; y++) {
-		memcpy(dst, src, bytes_per_row);
+		/* Copy the first byte -- only keep the wanted bits */
+		src_byte = *src & (0xff >> (sx % 8));
+		/* In destination, retain only the unused bits. EG if dx % 8 == 2, we retain bits 7 and 6. */
+		dst_byte = *dst & (0xff << (8 - (dx % 8)));
+		*dst = dst_byte | src_byte;
+
+		/* Copy the middle bytes: */
+		memcpy(dst + 1, src + 1, bytes_per_row);
+
+		/* Last byte of src: retain the used bits, e.g. if end == 2, retain bits 7 and 6*/
+		src_byte = src[bytes_per_row + 2] & (0xff << (8 - ((sx + w) % 8)));
+		/* Last byte of dst: retain the unused bits, e.g. if end == 2, retain bits 5, 4, 3, 2, 1, 0 */
+		dst_byte = dst[bytes_per_row + 2] & (0xff >> ((dx + w) % 8));
+		dst[bytes_per_row + 2] = dst_byte | src_byte;
+
+		/* Next line: */
 		src += src_stride;
 		dst += dst_stride;
 	}
+
 }
 
 void graphics_blit(struct Bitplane from[], struct Bitplane to[], int mask, int sx, int sy, int w, int h, int dx, int dy)
