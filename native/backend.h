@@ -55,6 +55,7 @@ bool backend_should_display_next_frame(int64_t time_remaining_this_frame);
 
 /* Present the current frame and prepare to render the next. */
 void backend_render();
+void backend_register_blitter_func(void(*func)(int x, int y, uint32_t *palette));
 
 /* Memory allocations are performed in the "init" portion of the module. They
  * are freed by the backend at shutdown and can't be freed by other modules.

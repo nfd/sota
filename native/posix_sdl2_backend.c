@@ -28,6 +28,7 @@ SDL_Window *window;
 SDL_Renderer *renderer;
 SDL_Texture *texture; // which we will update every frame.
 int window_width, window_height;
+void(*blitter_func)(int x, int y, uint32_t *palette);
 
 uint8_t *wad; // the entire wad
 
@@ -167,10 +168,18 @@ void backend_render()
 	uint8_t *plane_idx_4 = (uint8_t *)backend_bitplane[4].data;
 
 	int fb_idx = 0;
+	int blitter_check_step = window_width / 40;
 
 	for(int y = 0; y < window_height; y++) {
 		int bitx = 0, x = 0;
+		int next_blitter_check_location = 0;
+
 		while(x < window_width) {
+			if(blitter_func && x >= next_blitter_check_location) {
+				blitter_func(x * 40 / window_width, y * 256 / window_height, palette);
+				next_blitter_check_location += blitter_check_step;
+			}
+
 			uint8_t plane0 = plane_idx_0[bitx]; // we always have at least 2 bitplanes (TODO?)
 			uint8_t plane1 = plane_idx_1[bitx]; 
 			uint8_t plane2 = plane_idx_2 ? plane_idx_2[bitx] : 0;
@@ -204,6 +213,11 @@ void backend_render()
 	SDL_UpdateTexture(texture, NULL, framebuffer, window_width * 4);
 	SDL_RenderCopy(renderer, texture, NULL, NULL);
 	SDL_RenderPresent(renderer);
+}
+
+void backend_register_blitter_func(void(*func)(int x, int y, uint32_t *palette))
+{
+	blitter_func = func;
 }
 
 static uint8_t *read_entire_wad(const char *filename) {
@@ -259,6 +273,8 @@ bool backend_init(int width, int height, bool fullscreen, const void *wad_name)
 	}
 
 	/* Graphics initialisation */
+	blitter_func = NULL;
+
 	if(SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO) != 0) {
 		fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
 		return false;

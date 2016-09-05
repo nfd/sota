@@ -328,7 +328,7 @@ static void cmd_starteffect(int ms, struct choreography_starteffect *effect) {
 			state.effect_deinit = scene_deinit_delayedblit;
 			break;
 		case EFFECT_COPPERPASTELS:
-			scene_init_copperpastels();
+			scene_init_copperpastels(ms, effect->effect_data);
 			state.effect_tick = scene_copperpastels_tick;
 			state.effect_deinit = scene_deinit_copperpastels;
 			break;

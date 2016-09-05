@@ -201,10 +201,13 @@ DEMO = [
 
 		# The 'crazy hips' dancer
 		('after', 'scene', {'name': 'dance-3', 'planes': (BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1)}),
+		('after', 'clear', {'plane': 'all'}),
 		('after', 'palette', {'values': (0xff110022, 0xff221144, 0xff221144, 0xff221144)}),
-		('after', 'starteffect', {'name': 'copperpastels'}), # TODO also must show 3-delayed image, maybe by turning bitplanes off
+		# TODO also must show 3-delayed image, maybe by turning bitplanes off
+		('after', 'starteffect', {'name': 'copperpastels', 'values':
+			["WWWW", "WWWY", "WWBW", "GWWW", "WYWW", "WWWB", "RYBW", "WWYW", "BWWW", ]}), 
 		#('after', 'split_anim', {'name': '08da00', 'from': 0, 'to': 210}),
-		('after', 'pause', {'ms': 3000}),
+		('after', 'pause', {'ms': 30000}),
 
 
 		('after', 'end', {}),
@@ -316,6 +319,7 @@ split_anim_map = None
 def encode_split_anim(wad, args):
 	global split_anim_map
 	if split_anim_map is None:
+		get_file('data/split_map.json')
 		with open('data/split_map.json', 'r') as h:
 			split_anim_map = json.load(h)
 	
@@ -443,15 +447,34 @@ def pack_text_block(text_block):
 
 	return struct.pack(ENDIAN + 'II', len(indices_and_bytes) + 8, len(text_block)) + indices_and_bytes
 
+def _pack_copperpastels(values):
+	# Format is:
+	#   uint32_t number of 4-byte values
+	#   packed 4-byte values
+	# where each 4-byte value has one byte for each of the four corners (top left, top right, bottom left, bottom right),
+	# being W: white, R: red, Y: yellow, G: green, B: blue, X: black. 
+	# EG YWWW is yellow in top-left, white everywhere else.
+	num_values = len(values)
+	values_bin = b''.join(value.encode('utf-8') for value in values)
+	if len(values_bin) != num_values * 4:
+		raise Exception("Pastels values must all be 4 bytes")
+
+	return struct.pack(ENDIAN + "I", num_values) + values_bin
+
 def encode_starteffect(wad, args):
 	effect_num = EFFECT_NUM[args['name']]
 	#files_idx = [wad.add(filename) for filename in args.get('files', ())]
 	#files_packed = struct.pack(ENDIAN + ('I' * len(files_idx)), *files_idx)
 
 	# text block for VOTE! VOTE! VOTE! effect
-	packed_text = pack_text_block(args.get('text', ()))
+	if args['name'] == 'votevotevote':
+		args = pack_text_block(args.get('text', ()))
+	elif args['name'] == 'copperpastels':
+		args = _pack_copperpastels(args.get('values', ()))
+	else:
+		args = b''
 
-	return 0, struct.pack(ENDIAN + 'II', CMD_STARTEFFECT, effect_num) + packed_text
+	return 0, struct.pack(ENDIAN + 'II', CMD_STARTEFFECT, effect_num) + args
 
 def encode_loadfont(wad, args):
 	get_file(args['name'])
@@ -579,6 +602,11 @@ def build_demo(choreography, filename):
 	encoded = get_demo_sequence(wad, choreography)
 	print("Choreography length: %d bytes" %(len(encoded),))
 	wad.add_bin(encoded, is_choreography=True)
+
+	dirname = os.path.dirname(filename)
+	if dirname and not os.path.exists(dirname):
+		os.makedirs(dirname)
+
 	central_directory_size = wad.write(filename)
 	print("wrote %s (central directory size: %d)" % (filename, central_directory_size))
 

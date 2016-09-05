@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "heap.h"
 #include "graphics.h"
 #include "iff.h"
 #include "backend.h"
@@ -12,6 +13,21 @@
 #include "minmax.h"
 
 #define VOTEVOTEVOTE_DISPLAY_MS 60
+
+#define COPPER_PASTELS_SWITCH_SPEED_MS 1600
+#define COPPER_PASTELS_WIDTH 16
+#define COPPER_PASTELS_HEIGHT 18
+
+
+struct pastel {
+	uint8_t tl, tr, bl, br;
+};
+
+struct copperpastels_effect_data_struct {
+	uint32_t num_pastels;
+	struct pastel pastels[]; // * num_pastels
+};
+
 
 static float scale_x, scale_y;
 static float global_scale;
@@ -25,21 +41,17 @@ static uint32_t *votevotevote_palette_a, *votevotevote_palette_b;
 int delayed_blit_next_blit = 0; // ms
 int delayed_blit_delay = 40; // ms
 
+static int copperpastels_ms_start;
+static struct copperpastels_effect_data_struct *g_copperpastels_effect_data;
+
 struct {
 	uint32_t block_length;
 	uint32_t num_entries;
 	uint16_t entries[];
 } *current_text_block;
 
-#define COPPER_PASTELS_UPDATE_MS 200
-#define COPPER_PASTELS_WIDTH 16
-#define COPPER_PASTELS_HEIGHT 18
-#define COPPER_PASTELS_NUM_SPOTS 2
-static uint8_t pastels_brush[COPPER_PASTELS_WIDTH * COPPER_PASTELS_HEIGHT];
-
 struct {
-	uint32_t colours[COPPER_PASTELS_HEIGHT * COPPER_PASTELS_WIDTH];
-	int next_update_ms;
+	uint32_t colours[COPPER_PASTELS_WIDTH * COPPER_PASTELS_HEIGHT]; // precalculated
 } copperpastels;
 
 #define SQUARE(x) ((x) * (x))
@@ -107,33 +119,11 @@ float dmsin(float x)
 	return neg * y;
 }
 
-static void precalculate_pastels_brush() {
-	/* Precalculate the pastels brush, which is a filled circle with intensity
-	 * a function of distance from the centre.
-	*/
-	int centrex = COPPER_PASTELS_HEIGHT / 2;
-	int centrey = COPPER_PASTELS_WIDTH / 2;
-
-	float max_distance = sqrt1((centrex * centrex) + (centrey * centrey));
-
-	for(int y = 0; y < COPPER_PASTELS_HEIGHT; y++) {
-		for(int x = 0; x < COPPER_PASTELS_WIDTH; x++) {
-			int idx = (y * COPPER_PASTELS_WIDTH) + x;
-
-			float distance = sqrt1(SQUARE(abs(x - centrex)) + SQUARE(abs(y - centrey)));
-
-			pastels_brush[idx] = 255 - ((distance / max_distance) * 256);
-		}
-	}
-}
-
 void scene_init()
 {
 	scale_x = (float)window_width / 256;
 	scale_y = (float)window_height / 256;
 	global_scale = scale_x > scale_y? scale_x: scale_y;
-
-	precalculate_pastels_brush();
 }
 
 bool scene_init_spotlights() {
@@ -293,26 +283,141 @@ void scene_deinit_delayedblit()
 }
 
 
+static inline void copperpastels_set(int x, int y, uint32_t colour)
+{
+	copperpastels.colours[(y * COPPER_PASTELS_WIDTH) + x] = colour;
+}
+
+static inline uint32_t copperpastels_get(int x, int y)
+{
+	return copperpastels.colours[(y * COPPER_PASTELS_WIDTH) + x];
+}
+
+static inline uint8_t interpolate_one(uint8_t from, uint8_t to, float amt)
+{
+	if(amt > 1.0 || amt < 0.0) {
+		backend_debug("terp fail: %f\n", amt);
+		return 0;
+	}
+
+	float total = to - from;
+	total *= amt;
+
+	return from + total;
+}
+
+static uint32_t copperpastels_interpolate(uint32_t from, uint32_t to, float amt)
+{
+	return  0xff000000
+		| interpolate_one((from & 0xff0000) >> 16, (to & 0xff0000) >> 16, amt) << 16
+		| interpolate_one((from & 0xff00) >> 8, (to & 0xff00) >> 8, amt) << 8
+		| interpolate_one((from & 0xff), (to & 0xff), amt);
+}
+
+static uint32_t copperpastels_code_to_colour(uint8_t code)
+{
+	switch(code) {
+		case 'W':
+			return 0xffffffff;
+		case 'R':
+			return 0xffff0000;
+		case 'G':
+			return 0xff00ff00;
+		case 'B':
+			return 0xff0000ff;
+		case 'Y':
+			return 0xffffff00;
+		case 'X':
+			return 0xff000000;
+		default:
+			return 0xffbadc01;
+	}
+}
+
+static uint32_t copperpastels_interpolate_corner(uint8_t first, uint8_t second, float amt)
+{
+	return copperpastels_interpolate(
+			copperpastels_code_to_colour(first),
+			copperpastels_code_to_colour(second),
+			amt);
+}
+
+static void copperpastels_set_corners(int ms) {
+	int total_effect_time_ms = COPPER_PASTELS_SWITCH_SPEED_MS * g_copperpastels_effect_data->num_pastels;
+	int ms_into_effect = (ms - copperpastels_ms_start) % total_effect_time_ms;
+	float amt = ((float)ms_into_effect) / COPPER_PASTELS_SWITCH_SPEED_MS;
+	int first_index = (int)amt;
+	amt -= first_index;
+
+	int second_index = first_index + 1;
+	if(second_index == g_copperpastels_effect_data->num_pastels)
+		second_index = 0;
+
+	struct pastel *first = &g_copperpastels_effect_data->pastels[first_index];
+	struct pastel *second = &g_copperpastels_effect_data->pastels[second_index];
+
+	copperpastels_set(0, 0, copperpastels_interpolate_corner(first->tl, second->tl, amt));
+	copperpastels_set(COPPER_PASTELS_WIDTH - 1, 0, copperpastels_interpolate_corner(first->tr, second->tr, amt));
+	copperpastels_set(COPPER_PASTELS_WIDTH - 1, COPPER_PASTELS_HEIGHT - 1, copperpastels_interpolate_corner(first->br, second->br, amt));
+	copperpastels_set(0, COPPER_PASTELS_HEIGHT - 1, copperpastels_interpolate_corner(first->bl, second->bl, amt));
+}
+
 /* Copper effects: x is between 0 and 40 (every 8 pixels on a 320-width display), y is between 0 and 256. */
 static void scene_copperpastels_do_copper_effect(int x, int y, uint32_t *palette)
 {
-	x = (x * COPPER_PASTELS_WIDTH) / 40;
-	y = (y * COPPER_PASTELS_HEIGHT) / 256;
-
-	palette[0] = copperpastels.colours[(y * COPPER_PASTELS_WIDTH) + x];
+	// palette[0] = x % 2  ?0xffffffff: 0xff00ffff;
+	y = y * COPPER_PASTELS_HEIGHT / 256;
+	x = x * COPPER_PASTELS_WIDTH / 40;
+	palette[0] = copperpastels_get(x, y);
 }
 
-void scene_init_copperpastels()
+void scene_init_copperpastels(int ms, void *v_data)
 {
-	// TODO
+	struct copperpastels_effect_data_struct *effect_data_in = v_data;
+	g_copperpastels_effect_data = heap_alloc(
+			sizeof(struct copperpastels_effect_data_struct)
+			+ (sizeof(struct pastel) * effect_data_in->num_pastels));
+
+	g_copperpastels_effect_data->num_pastels = effect_data_in->num_pastels;
+	memcpy(g_copperpastels_effect_data->pastels, effect_data_in->pastels, sizeof(struct pastel) * effect_data_in->num_pastels);
+
+	backend_register_blitter_func(scene_copperpastels_do_copper_effect);
+	copperpastels_ms_start = ms;
 }
 
 void scene_copperpastels_tick(int ms)
 {
+	copperpastels_set_corners(ms);
+
+	/* Do interpolation: */
+	/* ... interpolate across top and bottom... */
+	for(int x = 1; x < COPPER_PASTELS_WIDTH - 1; x++) {
+		copperpastels_set(x, 0,
+				copperpastels_interpolate(
+					copperpastels_get(0, 0),
+					copperpastels_get(COPPER_PASTELS_WIDTH - 1, 0),
+					(float)x / COPPER_PASTELS_WIDTH));
+		copperpastels_set(x, COPPER_PASTELS_HEIGHT - 1,
+				copperpastels_interpolate(
+					copperpastels_get(0, COPPER_PASTELS_HEIGHT - 1),
+					copperpastels_get(COPPER_PASTELS_WIDTH - 1, COPPER_PASTELS_HEIGHT - 1),
+					(float)x / COPPER_PASTELS_WIDTH));
+	}
+
+	/* ... use top and bottom to interpolate down */
+	for(int y = 1; y < COPPER_PASTELS_HEIGHT - 1; y++) {
+		for(int x = 0; x < COPPER_PASTELS_WIDTH; x++) {
+			copperpastels_set(x, y,
+					copperpastels_interpolate(copperpastels_get(x, 0),
+						copperpastels_get(x, COPPER_PASTELS_HEIGHT - 1),
+						(float)y / COPPER_PASTELS_HEIGHT));
+		}
+	}
 }
 
 void scene_deinit_copperpastels()
 {
+	backend_register_blitter_func(NULL);
 }
 
 

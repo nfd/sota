@@ -13,7 +13,7 @@ void scene_init_delayedblit();
 void scene_delayedblit_tick(int ms);
 void scene_deinit_delayedblit();
 
-void scene_init_copperpastels();
+void scene_init_copperpastels(int ms, void *effect_data);
 void scene_copperpastels_tick(int ms);
 void scene_deinit_copperpastels();
 
