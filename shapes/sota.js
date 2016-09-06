@@ -4,6 +4,7 @@ var indices = null;
 var data = null;
 var logtextbox;
 var animating = 0;
+var per_frame_callback = null;
 var animation_start_ms;
 var last_animation_frame = -1;
 
@@ -34,6 +35,7 @@ function setup() {
 	
 	document.getElementById("step").addEventListener('click', step);
 	document.getElementById("animate").addEventListener('click', start_animating);
+	document.getElementById("dump").addEventListener('click', dump);
 
 	idxElem.addEventListener('keypress', function(e) {
 		if(e.keyCode == 13) {
@@ -78,7 +80,7 @@ function setup() {
 	//loadScript("script067080.json");
 	//loadScript("script07789e.json");
 	//loadScript("script075c66.json");
-	loadScript("script08da00.json");
+	loadScript("script09ae1a.json");
 	//loadScript("script078104.json");
 }
 
@@ -486,6 +488,10 @@ function step() {
 		if(shouldDraw) {
 			var ctx = canvas.getContext("2d");
 			draw_multiple(ctx, indices[idx]);
+
+			if(per_frame_callback != null) {
+				per_frame_callback(idx);
+			}
 		}
 
 		if(animating) {
@@ -497,6 +503,7 @@ function step() {
 
 	} else {
 		animating = false;
+		per_frame_callback = null;
 	}
 
 	idxElem.value = idx;
@@ -511,6 +518,22 @@ function start_animating() {
 	step();
 }
 
+function dump() {
+	per_frame_callback = function(idx) {
+		var img = document.createElement("img");
+		img.src = canvas.toDataURL("image/png");
+
+		var container = document.createElement("div");
+		container.style.display = "inline-block";
+		container.appendChild(document.createTextNode("" + idx));
+		container.appendChild(img);
+
+		var dump_div = document.getElementById("dumpdiv");
+		dump_div.appendChild(container);
+	};
+	start_animating();
+}
+
 function loadScript(filename) {
 	var req = new XMLHttpRequest();
 
@@ -519,6 +542,8 @@ function loadScript(filename) {
 			var script = JSON.parse(req.responseText);
 			indices = script["indices"];
 			data = script["data"];
+
+			document.getElementById("title").innerHTML = filename;
 
 			//background_init_concentric_circles();
 			step();
