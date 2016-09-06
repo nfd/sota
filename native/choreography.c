@@ -29,7 +29,7 @@
 #define EFFECT_VOTEVOTEVOTE 2
 #define EFFECT_DELAYEDBLIT 3
 #define EFFECT_COPPERPASTELS 4
-#define EFFECT_STATICCIRCLES 5
+#define EFFECT_STATIC 5
 
 #define ILBM_FULLSCREEN 0
 #define ILBM_CENTRE 1
@@ -333,10 +333,10 @@ static void cmd_starteffect(int ms, struct choreography_starteffect *effect) {
 			state.effect_tick = scene_copperpastels_tick;
 			state.effect_deinit = scene_deinit_copperpastels;
 			break;
-		case EFFECT_STATICCIRCLES:
-			scene_init_staticcircles(ms);
-			state.effect_tick = scene_staticcircles_tick;
-			state.effect_deinit = scene_deinit_staticcircles;
+		case EFFECT_STATIC:
+			scene_init_static(ms, effect->effect_data);
+			state.effect_tick = scene_static_tick;
+			state.effect_deinit = scene_deinit_static;
 			break;
 		default:
 			backend_debug("Unknown effect %u ignored\n", (unsigned int)(effect->effect_num));

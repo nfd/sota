@@ -19,7 +19,7 @@
 #define COPPER_PASTELS_WIDTH 16
 #define COPPER_PASTELS_HEIGHT 18
 
-#define STATICCIRCLES_SWITCH_SPEED_TICKS 4
+#define STATIC_SWITCH_SPEED_TICKS 2
 
 struct pastel {
 	uint8_t tl, tr, bl, br;
@@ -46,8 +46,11 @@ int delayed_blit_delay = 40; // ms
 static int copperpastels_ms_start;
 static struct copperpastels_effect_data_struct *g_copperpastels_effect_data;
 
-static int staticcircles_ticks_count;
-static pcg32_random_t staticcircles_rngstate;
+// Static effects
+#define STATIC_EFFECT_CIRCLES_AND_BLITTER_COPY 1
+static int static_ticks_count;
+static int static_effect_num;
+static pcg32_random_t static_rngstate;
 
 struct {
 	uint32_t block_length;
@@ -272,13 +275,19 @@ void scene_init_delayedblit()
 	delayed_blit_next_blit = 0;
 }
 
+static void delayedblit_do_copy(int top, int bottom)
+{
+	for(int plane_idx = top; plane_idx > bottom; plane_idx--)
+		backend_copy_bitplane(&backend_bitplane[plane_idx], &backend_bitplane[plane_idx - 1]);
+}
+
 void scene_delayedblit_tick(int ms)
 {
 	if(ms < delayed_blit_next_blit)
 		return;
 
-	for(int plane_idx = 4; plane_idx > 0; plane_idx--)
-		backend_copy_bitplane(&backend_bitplane[plane_idx], &backend_bitplane[plane_idx - 1]);
+
+	delayedblit_do_copy(4, 0);
 
 	delayed_blit_next_blit += delayed_blit_delay;
 }
@@ -428,67 +437,81 @@ void scene_deinit_copperpastels()
 /* TODO: fitting this into memory constraints -- we can do font at 4 bitplanes, buuut... 
  * ... it is just random bits plus some circle parts, so maybe regenerating it at each
  * change (every 80 ms) is okay */
-void scene_init_staticcircles(int ms)
+void scene_init_static(int ms, void *data)
 {
-	staticcircles_ticks_count = 0;
-	staticcircles_rngstate.state = 0x57a7e0fa27ULL;
+	static_ticks_count = 0;
+	static_rngstate.state = 0x57a7e0fa27ULL;
+
+	int *effect_num = (int *)data;
+	static_effect_num = *effect_num;
 }
 
 /* In terms of global_scale which is based on a 256x256 display.
  * Each frame has two circle groups. */
-static const int16_t staticcircles_radii[] = {
+static const int16_t static_circles_radii[] = {
 	25, 64,
 	50, 88,
 	75, 115,
 	105, 135};
 
-static const int staticcircles_num_frames = sizeof(staticcircles_radii) / sizeof(staticcircles_radii[0]) / 2;
+static const int static_num_frames = 4; // fair dice roll
 
-void scene_staticcircles_tick(int ms)
+#define STATIC_BITPLANE_NUM 0
+
+void scene_static_tick(int ms)
 {
 	uint32_t random;
 	int bytes_avail;
 
-	if(staticcircles_ticks_count % STATICCIRCLES_SWITCH_SPEED_TICKS == 0) {
-		int frame = (staticcircles_ticks_count / STATICCIRCLES_SWITCH_SPEED_TICKS) % staticcircles_num_frames;
+	if(static_ticks_count % STATIC_SWITCH_SPEED_TICKS == 0) {
+		int frame = (static_ticks_count / STATIC_SWITCH_SPEED_TICKS) % static_num_frames;
 
-		staticcircles_rngstate.inc = 37 + frame;
-		random = pcg32_random_r(&staticcircles_rngstate);
+		static_rngstate.inc = 37 + frame;
+		random = pcg32_random_r(&static_rngstate);
 		bytes_avail = 4;
 
-		uint8_t *ptr = backend_bitplane[0].data;
+		uint8_t *ptr = backend_bitplane[STATIC_BITPLANE_NUM].data;
 
 		int radii_idx = frame * 2;
 
-		for(int y = 0; y < backend_bitplane[0].height; y++) {
-			for(int x = 0; x < backend_bitplane[0].width / 8; x++) {
+		for(int y = 0; y < backend_bitplane[STATIC_BITPLANE_NUM].height; y++) {
+			for(int x = 0; x < backend_bitplane[STATIC_BITPLANE_NUM].width / 8; x++) {
 				ptr[x] = random & 0xff;
 				bytes_avail --;
 				if(!bytes_avail) {
-					random = pcg32_random_r(&staticcircles_rngstate);
+					random = pcg32_random_r(&static_rngstate);
 					bytes_avail = 4;
 				} else {
 					random >>= 8;
 				}
 			}
 
-			ptr += backend_bitplane[0].stride;
+			ptr += backend_bitplane[STATIC_BITPLANE_NUM].stride;
 		}
 
-		// Several circles clustered around the midpoint.
-		//planar_draw_thick_circle(&backend_bitplane[0], window_width / 2, window_height / 2, 25, 2);
-		for(int max_idx = radii_idx + 2; radii_idx < max_idx; radii_idx ++) {
-			int radius = staticcircles_radii[radii_idx] * global_scale;
-			planar_circle(&backend_bitplane[0], window_width / 2, window_height / 2, radius);
-			planar_circle(&backend_bitplane[0], 4 * global_scale + window_width / 2, window_height / 2, radius);
-			planar_circle(&backend_bitplane[0], window_width / 2, 4 * global_scale + window_height / 2, radius);
-			planar_circle(&backend_bitplane[0], 2 * global_scale + window_width / 2, 2 * global_scale + window_height / 2, radius);
+		switch(static_effect_num) {
+			case STATIC_EFFECT_CIRCLES_AND_BLITTER_COPY: {
+				// Several circles clustered around the midpoint.
+				//planar_draw_thick_circle(&backend_bitplane[0], window_width / 2, window_height / 2, 25, 2);
+				struct Bitplane *plane = &backend_bitplane[STATIC_BITPLANE_NUM];
+
+				for(int max_idx = radii_idx + 2; radii_idx < max_idx; radii_idx ++) {
+					int radius = static_circles_radii[radii_idx] * global_scale;
+					planar_circle(plane, window_width / 2, window_height / 2, radius);
+					planar_circle(plane, 4 * global_scale + window_width / 2, window_height / 2, radius);
+					planar_circle(plane, window_width / 2, 4 * global_scale + window_height / 2, radius);
+					planar_circle(plane, 2 * global_scale + window_width / 2, 2 * global_scale + window_height / 2, radius);
+				}
+
+				delayedblit_do_copy(3, 1);
+				break;
+			}
 		}
 	}
-	staticcircles_ticks_count += 1;
+	static_ticks_count += 1;
 }
 
-void scene_deinit_staticcircles()
+void scene_deinit_static()
 {
 }
 

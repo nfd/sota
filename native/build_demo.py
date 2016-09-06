@@ -46,8 +46,11 @@ EFFECT_NUM = {
 		'votevotevote': 2,
 		'delayedblit': 3,
 		'copperpastels': 4,
-		'staticcircles': 5,
+		'static': 5,
 }
+
+# Static sub-effects
+STATIC_CIRCLES_AND_BLITTER_COPY = 1
 
 # Bitplane size styles
 BITPLANE_OFF = 0
@@ -210,10 +213,11 @@ DEMO = [
 		#('after', 'split_anim', {'name': '08da00', 'from': 0, 'to': 210}),
 		('after', 'pause', {'ms': 30000}),
 
+		# Loading
 		('after', 'scene', {'name': 'loading', 'planes':  (BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1)}),
 		('after', 'clear', {'plane': 'all'}),
-		('after', 'palette', {'values': [0xff4f7153, 0xffb4debd]}), # TODO
-		('after', 'starteffect', {'name': 'staticcircles'}),
+		('after', 'palette', {'values': (0xffaaddbb, 0xff669977, 0xff77aa88, 0xff225544, 0xff77aa99, 0xff336655, 0xff336655, 0xff332222, 0xff88bb99, 0xff336655, 0xff336655, 0xff336655, 0xff447755, 0xff336655, 0xff333322, 0xff440000, 0xff99ccaa, 0xff558877, 0xff336655, 0xff225544, 0xff336655, 0xff336655, 0xff336655, 0xff442211, 0xff447766, 0xff334433, 0xff336655, 0xff441111, 0xff333322, 0xff441111, 0xff440000, 0xff440000)}),
+		('after', 'starteffect', {'name': 'static', 'effect': STATIC_CIRCLES_AND_BLITTER_COPY}),
 
 		# TODO this appears to bounce forward-to-back-to-forward rather than simply repeat.
 		# There are 86 frames of this animation in the Amiga demo.
@@ -489,6 +493,8 @@ def encode_starteffect(wad, args):
 		args = pack_text_block(args.get('text', ()))
 	elif args['name'] == 'copperpastels':
 		args = _pack_copperpastels(args.get('values', ()))
+	elif args['name'] == 'static':
+		args = struct.pack(ENDIAN + 'I', args['effect'])
 	else:
 		args = b''
 

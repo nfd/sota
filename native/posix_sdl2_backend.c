@@ -32,6 +32,9 @@ void(*blitter_func)(int x, int y, uint32_t *palette);
 
 uint8_t *wad; // the entire wad
 
+// Set this to > 1 to slow down time in the choreographer.
+#define GLOBAL_SLOWDOWN 1
+
 /* Frame rate the demo runs at. This doesn't affect the speed of the animations, 
  * which run at 25 fps */
 #define MS_PER_FRAME 20
@@ -58,14 +61,16 @@ uint64_t backend_get_time_ms()
 
 	gettimeofday(&tv, NULL);
 
-	return (uint64_t)(tv.tv_sec * 1000) + (tv.tv_usec / 1000);
+	uint64_t time = (uint64_t)(tv.tv_sec * 1000) + (tv.tv_usec / 1000);
 #else
 	struct timespec tp;
 
 	clock_gettime(CLOCK_REALTIME, &tp);
 	
-	return (uint64_t)(tp.tv_sec * 1000) + (tp.tv_nsec / 1000000);
+	uint64_t time = (uint64_t)(tp.tv_sec * 1000) + (tp.tv_nsec / 1000000);
 #endif
+
+	return time / GLOBAL_SLOWDOWN;
 }
 
 
@@ -530,7 +535,7 @@ void backend_run(int ms)
 
 		choreography_do_frame(ms);
 
-		int64_t time_remaining_this_frame = MS_PER_FRAME - (backend_get_time_ms() - frametime);
+		int64_t time_remaining_this_frame = (MS_PER_FRAME * GLOBAL_SLOWDOWN) - (backend_get_time_ms() - frametime);
 
 		backend_render();
 
