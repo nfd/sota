@@ -40,9 +40,11 @@ static void help() {
 	printf("State Of The Art\n");
 	printf("A demo by Spaceballs, revived by WzDD\n");
 	printf("Options:\n\n");
-	printf("  --fullscreen     : run in fullscreen rather than a 640x480 window\n");
 	printf("  --ms <x>         : start at millisecond x rather than the beginning\n");
 	printf("  --nosound        : don't make any noise\n");
+	printf("  --fullscreen     : run in fullscreen rather than a 640x480 window\n");
+	printf("  --width <x>      : set display width\n");
+	printf("  --height <x>     : set display height\n");
 	printf("  --wad            : use alternative wad file (sota.wad)\n");
 }
 
