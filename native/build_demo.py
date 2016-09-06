@@ -221,15 +221,138 @@ DEMO = [
 
 		# TODO this appears to bounce forward-to-back-to-forward rather than simply repeat.
 		# There are 86 frames of this animation in the Amiga demo.
-		('after', 'split_anim', {'name': '09541c', 'from': 0, 'to': 23, 'plane': 1, }),
-		('after', 'pause', {'ms': 30000}),
+		('after', 'split_anim', {'name': '09541c', 'from': 0, 'to': 20, 'plane': 1, }),
+		('after', 'split_anim', {'name': '09541c', 'from': 0, 'to': 20, 'plane': 1, }),
+		('after', 'split_anim', {'name': '09541c', 'from': 0, 'to': 20, 'plane': 1, }),
+		('after', 'split_anim', {'name': '09541c', 'from': 0, 'to': 20, 'plane': 1, }),
+		('after', 'split_anim', {'name': '09541c', 'from': 0, 'to': 20, 'plane': 1, }),
+		('after', 'split_anim', {'name': '09541c', 'from': 0, 'to': 20, 'plane': 1, }),
+		('after', 'split_anim', {'name': '09541c', 'from': 0, 'to': 14, 'plane': 1, }),
 
-		# TODO more votevotevote here
+		('after', 'scene', {'name': 'votevotevote2', 'planes': (BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_OFF, BITPLANE_OFF)}),
+		('after', 'clear', {'plane': 'all'}),
+		# black-on-white version
+		('after', 'alternate_palette', {'idx': 0, 'values': (0xffeeffff, 0xff000000, 0xff779999, 0xffddeeee, 0xff114444, 0xff447777, 0xff003333, 0xffaaaadd)}),
+		# white-on-black version
+		('after', 'alternate_palette', {'idx': 1, 'values': (0xff000000, 0xffeeffff, 0xff336666, 0xff113333, 0xffaabbbb, 0xff778888, 0xffccdddd, 0xff224444)}),
+		('after', 'loadfont', {'name': 'data/fontmap.iff', 'startchar': 'A', 'map' : FONTMAP}),
+		('after', 'starteffect', {'name': 'votevotevote', 
+			'text': ('VOTE[', 'VERY', 'LOTSA', 'NO', 'REAL', 'COOL', 'DULL', 'HIGH', 'FUNNY',
+				'VOTE[', 'FUNK', 'KRAZY', 'NICE', 'RAPID', 'RAP', 'RIPPED', 'UGLY', 'CLASS',
+				'VOTE[', 'CODE', 'MUSIC', 'GFX',)}),
+
+		('after', 'pause', {'ms': 3000, 'watchface-hint': 'keep'}),
 
 		# Single-colour spots, alternating between blue dancer on yellow spots, and red dancer on blue spots.
+		# Three separate animations are played: swing arms over head to crouch; wavey arms; shuffle on and off
 		('after', 'scene', {'name': 'dance-4', 'planes': (BITPLANE_1X1, BITPLANE_2X2, BITPLANE_OFF, BITPLANE_OFF, BITPLANE_OFF)}),
 		('after', 'clear', {'plane': 'all'}),
+		# the blue-on-yellow palette
+		('after', 'alternate_palette', {'idx': 0, 'values':
+			(0xff000000, 0xff0066aa, 0xffffff55, 0xff0077aa, 0xffffff55, 0xff0088aa, 0xffffff55, 0xff660000, 0xff88bb99, 0xff336655, 0xff336655, 0xff336655, 0xff447755, 0xff336655, 0xff333322, 0xff440000, 0xff99ccaa, 0xff558877, 0xff336655, 0xff225544, 0xff336655, 0xff336655, 0xff336655, 0xff442211, 0xff447766, 0xff334433, 0xff336655, 0xff441111, 0xff333322, 0xff441111, 0xff440000, 0xff440000)}),
+		# the red-on-blue palette
+		('after', 'alternate_palette', {'idx': 1, 'values':
+			(0xff000000, 0xffff9966, 0xff0000bb, 0xffff8866, 0xff0000bb, 0xffff7766, 0xff0000bb, 0xffaa0000, 0xff88bb99, 0xff336655, 0xff336655, 0xff336655, 0xff447755, 0xff336655, 0xff333322, 0xff440000, 0xff99ccaa, 0xff558877, 0xff336655, 0xff225544, 0xff336655, 0xff336655, 0xff336655, 0xff442211, 0xff447766, 0xff334433, 0xff336655, 0xff441111, 0xff333322, 0xff441111, 0xff440000, 0xff440000)}),
+		('after', 'use_alternate_palette', {'idx': 0}),
 		('simultaneously', 'starteffect', {'name': 'spotlights'}),
+
+		('after', 'split_anim', {'name': '098a00', 'from': 2, 'to': 9}),
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '098a00', 'from': 11, 'to': 21}),
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '098a00', 'from': 22, 'to': 32}),
+
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '099546', 'from': 0, 'to': 10}),
+
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '09ae1a', 'from': 0, 'to': 10}),
+
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '099546', 'from': 11, 'to': 21}),
+
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '09ae1a', 'from': 20, 'to': 30}),
+
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '099546', 'from': 70, 'to': 80}),
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '099546', 'from': 81, 'to': 91}),
+
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '09ae1a', 'from': 40, 'to': 50}),
+
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '099546', 'from': 58, 'to': 68}),
+
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '098a00', 'from': 14, 'to': 24}),
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '098a00', 'from': 25, 'to': 35}),
+
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '099546', 'from': 76, 'to': 86}),
+
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '09ae1a', 'from': 11, 'to': 21}),
+
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '099546', 'from': 5, 'to': 15}),
+
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '09ae1a', 'from': 5, 'to': 15}),
+
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '099546', 'from': 70, 'to': 79}),
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '099546', 'from': 80, 'to': 90}),
+
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '09ae1a', 'from': 45, 'to': 55}),
+
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '099546', 'from': 63, 'to': 74}),
+
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '09ae1a', 'from': 0, 'to': 10}),
+
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '099546', 'from': 39, 'to': 49}),
+
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '09ae1a', 'from': 11, 'to': 21}),
+
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '099546', 'from': 50, 'to': 60}),
+
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '09ae1a', 'from': 22, 'to': 32}),
+
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '099546', 'from': 61, 'to': 71}),
+
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '09ae1a', 'from': 33, 'to': 43}),
+
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '099546', 'from': 72, 'to': 82}),
+
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '09ae1a', 'from': 16, 'to': 25}),
+
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '099546', 'from': 27, 'to': 37}),
+
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '09ae1a', 'from': 9, 'to': 19}),
+
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '099546', 'from': 47, 'to': 57}),
+		('after', 'use_alternate_palette', {'idx': 1}),
+		('after', 'split_anim', {'name': '099546', 'from': 58, 'to': 68}),
+
+		('after', 'use_alternate_palette', {'idx': 0}),
+		('after', 'split_anim', {'name': '09ae1a', 'from': 11, 'to': 11}),
 
 
 		('after', 'end', {}),
@@ -352,7 +475,7 @@ def encode_split_anim(wad, args):
 
 	results = []
 
-	while frame_from < frame_to:
+	while frame_from <= frame_to:
 		# Find the portion of the split animation containing frame_from and encode as many anims as
 		# we can with it.
 		first_frame = 0

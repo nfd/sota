@@ -51,13 +51,16 @@ animations = (
 	# Loading screen, 23 frames.
 	0x9541c,
 
-	# Sequence after loading screen w/ crouching ending at 1:36
-	# TODO
-	#0x983b5,
+	# Sequence after loading screen 
+	#0x981ec,
 
-	# Dancer with hat, cut in with previous.
+	# Spin hands around over head, place on thighs, small crouch
+	0x98a00,
+
+	# Dancer, wearing hat, arms extended, moving hands up and down in sinuous motion
 	0x99546,
 
+	# facing right side, shimmy in from right, shimmy out
 	0x9ae1a,
 
 	# jumping 
