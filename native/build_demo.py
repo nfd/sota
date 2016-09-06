@@ -46,6 +46,7 @@ EFFECT_NUM = {
 		'votevotevote': 2,
 		'delayedblit': 3,
 		'copperpastels': 4,
+		'staticcircles': 5,
 }
 
 # Bitplane size styles
@@ -209,6 +210,23 @@ DEMO = [
 		#('after', 'split_anim', {'name': '08da00', 'from': 0, 'to': 210}),
 		('after', 'pause', {'ms': 30000}),
 
+		('after', 'scene', {'name': 'loading', 'planes':  (BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1)}),
+		('after', 'clear', {'plane': 'all'}),
+		('after', 'palette', {'values': [0xff4f7153, 0xffb4debd]}), # TODO
+		('after', 'starteffect', {'name': 'staticcircles'}),
+
+		# TODO this appears to bounce forward-to-back-to-forward rather than simply repeat.
+		# There are 86 frames of this animation in the Amiga demo.
+		('after', 'split_anim', {'name': '09541c', 'from': 0, 'to': 23, 'plane': 1, }),
+		('after', 'pause', {'ms': 30000}),
+
+		# TODO more votevotevote here
+
+		# Single-colour spots, alternating between blue dancer on yellow spots, and red dancer on blue spots.
+		('after', 'scene', {'name': 'dance-4', 'planes': (BITPLANE_1X1, BITPLANE_2X2, BITPLANE_OFF, BITPLANE_OFF, BITPLANE_OFF)}),
+		('after', 'clear', {'plane': 'all'}),
+		('simultaneously', 'starteffect', {'name': 'spotlights'}),
+
 
 		('after', 'end', {}),
 ]
@@ -311,7 +329,7 @@ def encode_anim(wad, args):
 	xor = args.get('xor', 1)
 
 	ms = ms_per_frame * (1 + frame_to - frame_from)
-	encoded = struct.pack(ENDIAN + 'IIIIIII', CMD_ANIM, ms_per_frame, frame_from, frame_to, data_idx, bitplane, xor)
+	encoded = struct.pack(ENDIAN + 'IIHHHHH', CMD_ANIM, data_idx, ms_per_frame, frame_from, frame_to, bitplane, xor)
 
 	return ms, encoded
 
@@ -499,8 +517,7 @@ class SceneIndexEntry:
 		self.scene_count = len(scene_tuples)
 
 		# Offset the tuple byte indices with our own length
-		self.scene_tuples = [(scene[0], scene[1] + len(self)) for scene in scene_tuples]
-		print('scene tuples', self.scene_tuples)
+		self.scene_tuples = [(scene[0], scene[1] + len(self), scene[2]) for scene in scene_tuples]
 
 	def __len__(self):
 		if self._length is None:
@@ -515,10 +532,13 @@ class SceneIndexEntry:
 
 	def serialise(self):
 		encoded = [struct.pack(ENDIAN + 'IIII', 0, len(self), CMD_SCENE_INDEX, len(self.scene_tuples))]
-		for ms, offset in self.scene_tuples:
+		for ms, offset, name in self.scene_tuples:
 			encoded.append(struct.pack(ENDIAN + 'II', ms, offset))
 
 		return b''.join(encoded)
+
+	def dump(self):
+		print('scene tuples', self.scene_tuples)
 
 def get_demo_sequence(wad, choreography):
 	# The time unit is milliseconds. Most animations run at 25fps or 40ms/frame.
@@ -558,7 +578,7 @@ def get_demo_sequence(wad, choreography):
 	previous_start = 0 # ms
 	previous_end = 0 # ms
 
-	scene_start = [] # (ms, position-in-file)
+	scene_start = [] # (ms, position-in-file, name)
 
 	byte_position = 0
 	for entry in choreography:
@@ -576,7 +596,7 @@ def get_demo_sequence(wad, choreography):
 
 		if entry[1] == 'scene':
 			# Add the scene to the scenes list
-			scene_start.append((this_end, byte_position))
+			scene_start.append((this_end, byte_position, entry[2]['name']))
 	
 		# Two-byte frame number, two-byte length (including frame # and length), then encoded data.
 		print(this_start, entry)
@@ -591,11 +611,13 @@ def get_demo_sequence(wad, choreography):
 	# Create the scene index and stick it at the start. The scene index consists of
 	# (uint32_t ms, uint32_t byte-offset-inside-choreography)
 	# ... for each scene.
-	scene_start.append((0xffffffff, byte_position)) # EOF with special MS value
-	encoded.insert(0, SceneIndexEntry(scene_start).serialise())
+	scene_start.append((0xffffffff, byte_position, 'end')) # EOF with special MS value
+	scene_indices = SceneIndexEntry(scene_start)
+	encoded.insert(0, scene_indices.serialise())
+
+	scene_indices.dump()
 
 	return b''.join(encoded)
-	print("Scene start:", scene_start)
 
 def build_demo(choreography, filename):
 	wad = Wad(ENDIAN)

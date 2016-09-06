@@ -17,3 +17,7 @@ void scene_init_copperpastels(int ms, void *effect_data);
 void scene_copperpastels_tick(int ms);
 void scene_deinit_copperpastels();
 
+void scene_init_staticcircles(int ms);
+void scene_staticcircles_tick(int ms);
+void scene_deinit_staticcircles();
+

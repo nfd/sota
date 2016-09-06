@@ -16,6 +16,7 @@ void graphics_lerp_palette(size_t num_elements, uint32_t *from, uint32_t *to, in
 // shapes
 void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *data, float scalex, float scaley, int xofs, int yofs, struct Bitplane *bitplane, bool xor);
 void planar_draw_thick_circle(struct Bitplane *bitplane, int xc, int yc, int radius, int thickness);
+void planar_circle(struct Bitplane *plane, int x0, int y0, int radius);
 
 // planar stuff
 void planar_line_vertical(struct Bitplane *plane, int x, int start_y, int end_y, bool xor);

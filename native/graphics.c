@@ -69,13 +69,11 @@ void graphics_lerp_palette(size_t num_elements, uint32_t *from, uint32_t *to, in
 	}
 }
 
-/*
-static inline void planar_putpixel(int bitplane_idx, int x, int y)
+static inline void planar_putpixel(struct Bitplane *plane, int x, int y)
 {
-	if(x >= 0 && x < bitplane_width && y >= 0 && y <= bitplane_height)
-		plane[bitplane_idx][(y * bitplane_width) + x] = (1 << bitplane_idx);
+	if(x >= 0 && x < plane->width && y >= 0 && y <= plane->height)
+		plane->data[(y * plane->stride) + x / 8] |= (1 << (7 - (x % 8)));
 }
-*/
 
 /* Heart of everything! */
 
@@ -357,6 +355,31 @@ void planar_draw_thick_circle(struct Bitplane *bitplane, int xc, int yc, int rad
 				xinner --;
 				errinner += 2 * (y - xinner + 1);
 			}
+		}
+	}
+}
+
+void planar_circle(struct Bitplane *plane, int x0, int y0, int radius)
+{
+	int x = radius;
+	int y = 0;
+	int err = 0;
+
+	while(x >= y) {
+		planar_putpixel(plane, x0 + x, y0 + y);
+		planar_putpixel(plane, x0 + y, y0 + x);
+		planar_putpixel(plane, x0 - y, y0 + x);
+		planar_putpixel(plane, x0 - x, y0 + y);
+		planar_putpixel(plane, x0 - x, y0 - y);
+		planar_putpixel(plane, x0 - y, y0 - x);
+		planar_putpixel(plane, x0 + y, y0 - x);
+		planar_putpixel(plane, x0 + x, y0 - y);
+
+		y += 1;
+		err += 1 + 2*y;
+		if (2 * (err - x) + 1 > 0) {
+			x -= 1;
+			err += 1 - 2 * x;
 		}
 	}
 }

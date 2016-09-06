@@ -29,6 +29,7 @@
 #define EFFECT_VOTEVOTEVOTE 2
 #define EFFECT_DELAYEDBLIT 3
 #define EFFECT_COPPERPASTELS 4
+#define EFFECT_STATICCIRCLES 5
 
 #define ILBM_FULLSCREEN 0
 #define ILBM_CENTRE 1
@@ -70,12 +71,12 @@ struct choreography_fadeto {
 
 struct choreography_anim {
 	struct choreography_header header;
-	uint32_t ms_per_frame;
-	uint32_t frame_from;
-	uint32_t frame_to;
 	uint32_t data_file;
-	uint32_t bitplane;
-	uint32_t xor;
+	uint16_t ms_per_frame;
+	uint16_t frame_from;
+	uint16_t frame_to;
+	uint16_t bitplane;
+	uint16_t xor;
 };
 
 struct choreography_pause {
@@ -331,6 +332,11 @@ static void cmd_starteffect(int ms, struct choreography_starteffect *effect) {
 			scene_init_copperpastels(ms, effect->effect_data);
 			state.effect_tick = scene_copperpastels_tick;
 			state.effect_deinit = scene_deinit_copperpastels;
+			break;
+		case EFFECT_STATICCIRCLES:
+			scene_init_staticcircles(ms);
+			state.effect_tick = scene_staticcircles_tick;
+			state.effect_deinit = scene_deinit_staticcircles;
 			break;
 		default:
 			backend_debug("Unknown effect %u ignored\n", (unsigned int)(effect->effect_num));

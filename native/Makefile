@@ -1,4 +1,4 @@
-OBJS=main.o graphics.o anim.o scene.o wad.o choreography.o sound.o iff.o iff-font.o posix_sdl2_backend.o heap.o mbit.o tinf/src/adler32.o tinf/src/crc32.o tinf/src/tinflate.o tinf/src/tinfzlib.o
+OBJS=main.o graphics.o anim.o scene.o wad.o choreography.o sound.o iff.o iff-font.o posix_sdl2_backend.o heap.o mbit.o pcgrandom.o tinf/src/adler32.o tinf/src/crc32.o tinf/src/tinflate.o tinf/src/tinfzlib.o
 
 LIBS=-lSDL2 -lm -lmikmod -lpthread
 CFLAGS=-g -O2 -std=c99 -Wall -Werror -fsanitize=address -Wno-unused-function -DHEAP_SIZE_KB=512

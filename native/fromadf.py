@@ -45,8 +45,11 @@ animations = (
 	# ?? broken, hat
 	#0x8d840,
 
-	# Crazy-hips dancer, morphs to geometric shapes and other dancers, ending face spinning away and loading screen (1:02-1:10)
+	# Crazy-hips dancer, morphs to geometric shapes and other dancers, ending face spinning away (1:02-1:10)
 	0x8da00,
+
+	# Loading screen, 23 frames.
+	0x9541c,
 
 	# Sequence after loading screen w/ crouching ending at 1:36
 	# TODO
