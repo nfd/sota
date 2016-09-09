@@ -206,12 +206,11 @@ DEMO = [
 		# The 'crazy hips' dancer
 		('after', 'scene', {'name': 'dance-3', 'planes': (BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1)}),
 		('after', 'clear', {'plane': 'all'}),
-		('after', 'palette', {'values': (0xff110022, 0xff221144, 0xff221144, 0xff221144)}),
+		('after', 'palette', {'values': (0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xffdd8844, 0xffaa3311, 0xffaa4422, 0xff661100, 0xffee9944, 0xffaa3311, 0xffaa3311, 0xffaa3311, 0xffbb4422, 0xffaa3311, 0xff771100, 0xff440000, 0xffffaa55, 0xffcc6633, 0xffaa3311, 0xff992211, 0xffaa3311, 0xffaa3311, 0xffaa3311, 0xff661100, 0xffbb5522, 0xff881100, 0xffaa3311, 0xff550000, 0xff771100, 0xff550000, 0xff440000, 0xff330000)}),
 		# TODO also must show 3-delayed image, maybe by turning bitplanes off
 		('after', 'starteffect', {'name': 'copperpastels', 'values':
 			["WWWW", "WWWY", "WWBW", "GWWW", "WYWW", "WWWB", "RYBW", "WWYW", "BWWW", ]}), 
-		#('after', 'split_anim', {'name': '08da00', 'from': 0, 'to': 210}),
-		('after', 'pause', {'ms': 30000}),
+		('after', 'split_anim', {'name': '08da00', 'from': 0, 'to': 210, 'plane': 0}),
 
 		# Loading
 		('after', 'scene', {'name': 'loading', 'planes':  (BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1, BITPLANE_1X1)}),

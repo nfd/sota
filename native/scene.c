@@ -427,6 +427,7 @@ void scene_copperpastels_tick(int ms)
 						(float)y / COPPER_PASTELS_HEIGHT));
 		}
 	}
+	delayedblit_do_copy(3, 0);
 }
 
 void scene_deinit_copperpastels()

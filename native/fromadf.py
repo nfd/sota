@@ -74,15 +74,17 @@ animations = (
 
 	0xa12f2,
 
-	# "angley" distorted dancer (but not distorted?)
-	# TODO -- the index for this is FUBAR
-	#0xb05fb,
+	# "angley" distorted dancer (but not distorted?) (TODO where is this?)
+
+	# Opening iris to square to female dancer, profile, to five-pointed shape, to same dancer in profile, turning towards
+	# camera, to circle, to front-facing dancer, to collection of triangles at bottom of screen, to front-facing dancer,
+	# to square filling the screen
+	0xaface,
 
 	# dancer, unknown (suspiciously similar to the first one)
 	0xb3274,
 
-	# TODO: lots of image-looking stuff here, but doesn't obviously fit a pattern. Maybe it's that grid thing?
-
+	# The grid thing.
 	0xb989c,
 
 	# Dancer, various shape morphs (which do not morph here)
