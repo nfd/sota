@@ -24,6 +24,7 @@ static struct
 	struct position *positions;
 	int height; // cached
 	int kerning; // px between letters
+	int scale;
 	struct LoadedIff iff; // information about the image
 	struct Bitplane *planes; // location of the font
 } font;
@@ -36,11 +37,15 @@ bool ifffont_init()
 	return true;
 }
 
-static struct position *get_position(char c)
+static void get_position(char c, struct position *dst)
 {
 	int idx = (c - font.firstchar);
 
-	return (struct position *)(&(font.positions[idx]));
+	struct position *pos = &font.positions[idx];
+	dst->sx = pos->sx * font.scale;
+	dst->sy = pos->sy * font.scale;
+	dst->ex = pos->ex * font.scale;
+	dst->ey = pos->ey * font.scale;
 }
 
 bool ifffont_load(int file_idx, uint32_t startchar, uint32_t numchars, uint16_t *positions, struct Bitplane *planes)
@@ -54,31 +59,26 @@ bool ifffont_load(int file_idx, uint32_t startchar, uint32_t numchars, uint16_t 
 
 	iff_get_dimensions(&font.iff, &w, &h);
 
-	// TODO
-	assert(w == 320 && h == 256);
-
 	font.positions = (struct position *)positions;
 
-	/* We want the font to be an integer multiple of the 
-	 * width, because blocky scaling of text looks bad.
-	 * Fonts are always 320x256
-	*/
-	// TODO: scaling -- affects bitmap allocation obviously (though may be better to do raster scaling
-	// in the backend at display time).
-	int max_scale = 1; // chosen by fair dice roll.
-	//int ypos = max(0, window_height - (h * max_scale));
-	//iff_display(file_idx, 0, window_height + ypos, w * max_scale, h * max_scale, NULL, NULL);
-	
-	// TODO: check height display?
-	iff_display(&font.iff, 0, 0, w, h, NULL, NULL, planes);
+	/* Make the font as big as possible without exceeding either screen
+	 * dimension and while remaining an integer multiple (because non-integer
+	 * scaling looks bad). */
+	/* TODO to be honest it looks pretty bad at any scaling other than 1 --
+	 * solution would be to use a real font */
+	int max_int_scale = min(planes[0].width / w, planes[0].height / h);
+	font.scale = max_int_scale;
+
+	iff_display(&font.iff, 0, 0, w * font.scale, h * font.scale, NULL, NULL, planes, 0);
 
 	font.firstchar = startchar;
 	font.numchars = numchars;
 
 	// find the font height
-	struct position *first_position = get_position(startchar);
-	font.height = first_position->ey - first_position->sy;
-	font.kerning = UNSCALED_KERNING * max_scale;
+	struct position first_position;
+	get_position(startchar, &first_position);
+	font.height = first_position.ey - first_position.sy;
+	font.kerning = UNSCALED_KERNING;
 	font.planes = planes;
 
 	return true;
@@ -98,9 +98,10 @@ int ifffont_measure(int numchars, char *text)
 	int width_px = 0;
 
 	for(int i = 0; i < numchars; i++) {
-		struct position *pos = get_position(text[i]);
+		struct position pos;
+		get_position(text[i], &pos);
 
-		width_px += ((pos->ex - pos->sx) + font.kerning + 1);
+		width_px += ((pos.ex - pos.sx) + (font.kerning * font.scale) + 1);
 	}
 
 	return width_px;
@@ -113,14 +114,13 @@ int ifffont_get_height()
 
 void ifffont_draw(int numchars, char *text, int x, int y, struct Bitplane dest_planes[])
 {
-	// TODO apply integer-multiplicative scaling here if appropriate.
-
 	for(int i = 0; i < numchars; i++) {
-		struct position *pos = get_position(text[i]);
-		int char_width = (pos->ex - pos->sx) + 1;
-		int height = pos->ey - pos->sy;
+		struct position pos;
+		get_position(text[i], &pos);
+		int char_width = (pos.ex - pos.sx) + 1;
+		int height = pos.ey - pos.sy;
 
-		graphics_blit(font.planes, dest_planes, FONT_BITPLANE_MASK, pos->sx, pos->sy, char_width, height, x, y);
+		graphics_blit(font.planes, dest_planes, FONT_BITPLANE_MASK, pos.sx, pos.sy, char_width, height, x, y);
 
 		x += (char_width + font.kerning);
 	}
