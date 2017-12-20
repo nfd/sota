@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <inttypes.h>
 #include <assert.h>
+#include <math.h>
 
 #include "anim.h"
 #include "graphics.h"
@@ -16,18 +17,37 @@
 #define ANIM_SOURCE_HEIGHT 200
 #define MAX_TWEENED_VERTICES 512
 
-float anim_scale_x;
-float anim_scale_y;
-int anim_offset_x;
-int anim_offset_y;
+static float anim_scale_x;
+static float anim_scale_y;
+static int anim_offset_x;
+static int anim_offset_y;
+static int anim_zoom;
 
-struct Bitplane *anim_bitplane;
-bool anim_xor;
+static bool anim_xor;
+static bool anim_distort;
+static bool anim_flip_horizontal, anim_flip_vertical;
+static bool anim_outline;
+static bool anim_multidraw_3d;
 
 //#define MAX_SIMULTANEOUS_ANIM 2
 
 struct animation current_anim, prev_anim;
 uint8_t current_tween[MAX_TWEENED_VERTICES * 2];
+
+void anim_set_zoom(int zoom_in) {
+	anim_zoom = zoom_in;
+
+	/* Calculate offset:
+	 *  - Aim to centre the image horizontally
+	 *  - Vertically, put the base of the image at the base of the window, unless we're zooming.
+	*/
+	anim_offset_x = (window_width / 2) - ( (ANIM_SOURCE_WIDTH * anim_scale_x * anim_zoom) / 2);
+	if(anim_zoom == 1) {
+		anim_offset_y = window_height - (ANIM_SOURCE_HEIGHT * anim_scale_y);
+	} else {
+		anim_offset_y = window_height - (ANIM_SOURCE_HEIGHT * anim_scale_y * anim_zoom * 3 / 4);
+	}
+}
 
 void anim_init()
 {
@@ -41,24 +61,40 @@ void anim_init()
 	anim_scale_x = ((float)window_width) / ANIM_SOURCE_WIDTH;
 	anim_scale_y = ((float)window_height) / ANIM_SOURCE_HEIGHT;
 
-	anim_offset_x = (window_width / 2) - ( (ANIM_SOURCE_WIDTH * anim_scale_x) / 2);
-	anim_offset_y = window_height - (ANIM_SOURCE_HEIGHT * anim_scale_y);
-
-	anim_bitplane = &backend_bitplane[0];
+	anim_set_zoom(1);
+	anim_set_flip(false, false);
+	anim_set_outline(false);
+	anim_set_multidraw_3d(false);
 
 	current_anim.data_file = prev_anim.data_file = -1;
-}
-
-void anim_set_bitplane(struct Bitplane *bitplane) {
-	anim_bitplane = bitplane;
 }
 
 void anim_set_xor(bool xor) {
 	anim_xor = xor;
 }
 
-static uint8_t *anim_draw_object(uint8_t *data);
-void anim_draw(struct animation *anim, int frame_idx)
+void anim_set_distort(bool distort) {
+	anim_distort = distort;
+}
+
+void anim_set_flip(bool horizontal, bool vertical)
+{
+	anim_flip_horizontal = horizontal;
+	anim_flip_vertical = vertical;
+}
+
+void anim_set_outline(bool enabled)
+{
+	anim_outline = enabled;
+}
+
+void anim_set_multidraw_3d(bool enabled)
+{
+	anim_multidraw_3d = enabled;
+}
+
+static uint8_t *anim_draw_object(struct Bitplane *, uint8_t *data);
+void anim_draw(struct Bitplane *anim_bitplane, struct animation *anim, int frame_idx)
 {
 	if(frame_idx > anim->num_frames)
 		return;
@@ -66,21 +102,29 @@ void anim_draw(struct animation *anim, int frame_idx)
 	int index = ((anim->indices[(frame_idx * 2)] << 8) | anim->indices[(frame_idx * 2) + 1]);
 	uint8_t *data = &(anim->data[index]);
 
-	/* num_objects should be 1 through to 6, indicating the number of objects in the frame */
+	/* Normally num_objects is between 1 and 6, but in the fake-3D section is goes up to 15. */
+	//backend_debug("anim_draw frame %d\n", frame_idx);
 	uint8_t num_objects = *data++;
-	if(num_objects < 1 || num_objects > 6) {
+	if(num_objects < 1 || num_objects > 16) {
 		backend_debug("anim_draw: num_objects: %d\n", num_objects);
 		return;
 	}
 
-	planar_clear(anim_bitplane);
+	if(anim_multidraw_3d) {
+		planar_clear(&backend_bitplane[0]);
+		planar_clear(&backend_bitplane[1]);
+		planar_clear(&backend_bitplane[2]);
+	} else {
+		planar_clear(anim_bitplane);
+	}
+	
 
 	for(uint8_t i = 0; i < num_objects; i++) {
-		data = anim_draw_object(data);
+		data = anim_draw_object(anim_bitplane, data);
 	}
 }
 
-static uint8_t *anim_draw_object(uint8_t *data) {
+static uint8_t *anim_draw_object(struct Bitplane *anim_bitplane, uint8_t *data) {
 	/* draw_cmd should be 0xdX for any X */
 	uint8_t draw_cmd = *data++;
 	//
@@ -91,8 +135,35 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 		case 0xd0:
 		{
 			int num_vertices = *data++;
+			//backend_debug("draw cmd %x verts %d\n", draw_cmd, num_vertices);
 			if(num_vertices > 0) {
-				graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_scale_x, anim_scale_y, anim_offset_x, anim_offset_y, anim_bitplane, anim_xor);
+
+				if(anim_multidraw_3d) {
+					switch(draw_cmd & 0xf) {
+						default:
+						case 3:
+							// shadows
+							graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_zoom * anim_scale_x, anim_zoom * anim_scale_y, anim_offset_x, anim_offset_y, &backend_bitplane[0], anim_xor, anim_distort, anim_flip_horizontal, anim_flip_vertical);
+							break;
+						case 5:
+							// midtones
+							graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_zoom * anim_scale_x, anim_zoom * anim_scale_y, anim_offset_x, anim_offset_y, &backend_bitplane[0], anim_xor, anim_distort, anim_flip_horizontal, anim_flip_vertical);
+							graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_zoom * anim_scale_x, anim_zoom * anim_scale_y, anim_offset_x, anim_offset_y, &backend_bitplane[1], anim_xor, anim_distort, anim_flip_horizontal, anim_flip_vertical);
+							break;
+						case 7:
+							// Highlights
+							graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_zoom * anim_scale_x, anim_zoom * anim_scale_y, anim_offset_x, anim_offset_y, &backend_bitplane[0], anim_xor, anim_distort, anim_flip_horizontal, anim_flip_vertical);
+							graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_zoom * anim_scale_x, anim_zoom * anim_scale_y, anim_offset_x, anim_offset_y, &backend_bitplane[1], anim_xor, anim_distort, anim_flip_horizontal, anim_flip_vertical);
+							graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_zoom * anim_scale_x, anim_zoom * anim_scale_y, anim_offset_x, anim_offset_y, &backend_bitplane[2], anim_xor, anim_distort, anim_flip_horizontal, anim_flip_vertical);
+							break;
+					}
+				} else {
+					if(anim_outline) {
+						graphics_draw_scaled_polygon_to_bitmap(num_vertices, data, anim_zoom * anim_scale_x, anim_zoom * anim_scale_y, anim_offset_x, anim_offset_y, anim_bitplane);
+					} else {
+						graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, data, anim_zoom * anim_scale_x, anim_zoom * anim_scale_y, anim_offset_x, anim_offset_y, anim_bitplane, anim_xor, anim_distort, anim_flip_horizontal, anim_flip_vertical);
+					}
+				}
 			}
 			data += (num_vertices * 2);
 			break;
@@ -119,7 +190,11 @@ static uint8_t *anim_draw_object(uint8_t *data) {
 			uint8_t *shape = lerp_tween(tween_from, tween_to, tween_t, tween_count);
 
 			int num_vertices = *shape++;
-			graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, shape, anim_scale_x, anim_scale_y, anim_offset_x, anim_offset_y, anim_bitplane, anim_xor);
+			if(anim_outline) {
+				graphics_draw_scaled_polygon_to_bitmap(num_vertices, shape, anim_zoom * anim_scale_x, anim_zoom * anim_scale_y, anim_offset_x, anim_offset_y, anim_bitplane);
+			} else {
+				graphics_draw_filled_scaled_polygon_to_bitmap(num_vertices, shape, anim_zoom * anim_scale_x, anim_zoom * anim_scale_y, anim_offset_x, anim_offset_y, anim_bitplane, anim_xor, anim_distort, anim_flip_horizontal, anim_flip_vertical);
+			}
 			break;
 		}
 		default:
