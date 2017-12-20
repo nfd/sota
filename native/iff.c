@@ -140,10 +140,10 @@ static void scale_scanline(uint32_t *src, uint16_t src_w, uint32_t *dst, uint16_
 }
 
 
-static void iff_stretch(uint16_t src_w, uint16_t src_h, uint16_t dst_x, uint16_t dst_y, uint16_t dst_w, uint16_t dst_h, uint16_t nPlanes, int8_t *src, uint8_t compression, struct Bitplane *planes)
+static void iff_stretch(uint16_t src_w, uint16_t src_h, uint16_t dst_x, uint16_t dst_y, uint16_t dst_w, uint16_t dst_h, uint16_t nPlanes, int8_t *src, uint8_t compression, struct Bitplane *planes, int start_plane)
 {
 	int16_t row_bytes = ((src_w + 15) >> 4) << 1;
-	int8_t row_byte_data[align(row_bytes, sizeof(uint32_t))]; // NB this will overflow the stack on Pebble
+	int8_t row_byte_data[row_bytes]; // NB this will overflow the stack on Pebble
 
 	int end_y = dst_y + dst_h;
 	int intPart = (src_h / dst_h);
@@ -165,15 +165,22 @@ static void iff_stretch(uint16_t src_w, uint16_t src_h, uint16_t dst_x, uint16_t
 						src = expand_scanline(src, row_bytes, row_byte_data);
 					}
 
+					struct Bitplane *dest_plane = &planes[plane + start_plane];
+
 					/* Write the scanline to the destination */
-					if(catchup == 1)
+					if(catchup == 1) {
+						// TODO obviously this means we can only draw to multiples-of-8 destinations
+						int dst_offset = (dst_y * dest_plane->stride) + (dst_x / 8);
+
 						scale_scanline((uint32_t *)row_byte_data, src_w,
-								(uint32_t *)(planes[plane].data + (dst_y * planes[plane].stride)), dst_w);
+								(uint32_t *)(dest_plane->data + dst_offset), dst_w);
+					}
 				}
 			}
 		} else {
-			/* replicate all bitplanes of previous row (dest to dest copy): TODO */
-			graphics_blit(planes, planes, 0xff, dst_x, dst_y - 1, dst_w, 1, dst_x, dst_y);
+			/* replicate all bitplanes of previous row (dest to dest copy) */
+			int plane_mask = ( (1 << nPlanes) - 1) << start_plane;
+			graphics_blit(planes, planes, plane_mask, dst_x, dst_y - 1, dst_w, 1, dst_x, dst_y);
 		}
 
 		src_prev_row = src_row;
@@ -223,7 +230,11 @@ bool iff_load(int file_idx, struct LoadedIff *iff)
 	}
 
 	iff->cmap = iff_find_chunk(data, end, IFF_CMAP, &iff->cmap_count);
-	iff->cmap_count /= 3;
+	if(iff->cmap) {
+		iff->cmap_count /= 3;
+	} else {
+		iff->cmap_count = 0;
+	}
 
 	return true;
 }
@@ -240,7 +251,7 @@ void iff_get_dimensions(struct LoadedIff *iff, uint16_t *w, uint16_t *h)
 }
 
 
-bool iff_display(struct LoadedIff *iff, int dst_x, int dst_y, int dst_w, int dst_h, uint32_t *num_colours, uint32_t *palette_out, struct Bitplane *planes)
+bool iff_display(struct LoadedIff *iff, int dst_x, int dst_y, int dst_w, int dst_h, uint32_t *num_colours, uint32_t *palette_out, struct Bitplane *planes, int start_plane)
 {
 	/* Doesn't change palette, but will write it to palette_out if that argument is not null. */
 	uint16_t src_w = be16toh(iff->bmhd->w);
@@ -252,7 +263,7 @@ bool iff_display(struct LoadedIff *iff, int dst_x, int dst_y, int dst_w, int dst
 	if(iff->bmhd->compression == 0)
 		fprintf(stderr, "uncompressed expand untested\n");
 
-	iff_stretch(src_w, src_h, dst_x, dst_y, dst_w, dst_h, nplanes, iff->body, iff->bmhd->compression, planes);
+	iff_stretch(src_w, src_h, dst_x, dst_y, dst_w, dst_h, nplanes, iff->body, iff->bmhd->compression, planes, start_plane);
 
 	/* Copy the palette if requested */
 	if(num_colours)

@@ -23,5 +23,5 @@ struct LoadedIff {
 bool iff_load(int file_idx, struct LoadedIff *iff);
 void iff_unload(struct LoadedIff *iff);
 void iff_get_dimensions(struct LoadedIff *iff, uint16_t *w, uint16_t *h);
-bool iff_display(struct LoadedIff *iff, int dst_x, int dst_y, int dst_w, int dst_h, uint32_t *num_colours, uint32_t *palette_out, struct Bitplane *planes);
+bool iff_display(struct LoadedIff *iff, int dst_x, int dst_y, int dst_w, int dst_h, uint32_t *num_colours, uint32_t *palette_out, struct Bitplane *planes, int start_plane);
 
