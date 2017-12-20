@@ -24,6 +24,7 @@ struct poly_elem {
 };
 
 struct poly_elem **edge_table;
+int outline_width;
 
 int graphics_init() {
 	// edge_table is used by the scanline polygon rendering algorithm
@@ -32,6 +33,9 @@ int graphics_init() {
 		backend_debug("edge_table: couldn't alloc");
 		return -1;
 	}
+
+	/* width of lines when drawing polygons in outline mode */
+	outline_width = (2 * (window_width < 320 ? 320 : window_width)) / 320; 
 
 	return 0;
 }
@@ -104,7 +108,74 @@ static int active_list_comparator(const void *lhs, const void *rhs) {
 	return 0;
 }
 
-void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *data, float scalex, float scaley, int xofs, int yofs, struct Bitplane *bitplane, bool xor)
+static void planar_line_thick(struct Bitplane *bitplane, int x0, int y0, int x1, int y1, int thickness)
+{
+	/* Modified from rosettacode's standard Bresenham algorithm. Could be
+	 * improved -- lots of overdraw */
+	int dx = abs(x1 - x0);
+	int sx = x0 < x1 ? 1 : -1;
+	int dy = abs(y1 - y0);
+	int sy = y0<y1 ? 1 : -1; 
+	int err = (dx > dy ? dx : -dy) / 2;
+	int e2;
+
+	int half_thickness = thickness / 2;
+
+	for(;;){
+		for(int ythick = -half_thickness; ythick < half_thickness; ythick++){
+			for(int xthick= -half_thickness; xthick<= half_thickness; xthick++) {
+				planar_putpixel(bitplane, x0 + xthick, y0 + ythick);
+			}
+		}
+		if (x0 == x1 && y0 == y1)
+			break;
+
+		e2 = err;
+
+		if (e2 >-dx) {
+			err -= dy; x0 += sx;
+		}
+
+		if (e2 < dy) {
+			err += dx; y0 += sy;
+		}
+	}
+}
+
+void graphics_draw_scaled_polygon_to_bitmap(int num_vertices, uint8_t *data, float scalex, float scaley, int xofs, int yofs, struct Bitplane *bitplane)
+{
+	int y0, x0, y1, x1;
+
+	y0 = data[0];
+	x0 = data[1];
+	x0 = x0 * scalex + xofs;
+	y0 = y0 * scaley + yofs;
+
+	for(int i=2; i < (num_vertices * 2); i+= 2) {
+
+		y1 = data[i];
+		x1 = data[i+1];
+
+		x1 = x1 * scalex + xofs;
+		y1 = y1 * scaley + yofs;
+
+		planar_line_thick(bitplane, x0, y0, x1, y1, outline_width);
+
+		x0 = x1;
+		y0 = y1;
+	}
+
+	/* Close the shape */
+	y0 = data[0];
+	x0 = data[1];
+	x0 = x0 * scalex + xofs;
+	y0 = y0 * scaley + yofs;
+
+	planar_line_thick(bitplane, x0, y0, x1, y1, outline_width);
+}
+
+
+void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *data, float scalex, float scaley, int xofs, int yofs, struct Bitplane *bitplane, bool xor, bool distort, bool flip_horizontal, bool flip_vertical)
 {
 	/* Polygon fill algorithm */
 	// The following tutorial was most helpful:
@@ -127,21 +198,44 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 	for(i=0; i < (num_vertices * 2); i+= 2) {
 		int y0, x0, y1, x1;
 
-		y0 = data[i] * scaley;
-		x0 = data[i+1] * scalex;
+		y0 = data[i];
+		x0 = data[i+1];
 
 		if(i == (num_vertices * 2) - 2) {
 			// close the shape
-			y1 = data[0] * scaley;
-			x1 = data[1] * scalex;
+			y1 = data[0];
+			x1 = data[1];
 		} else {
-			y1 = data[i+2] * scaley;
-			x1 = data[i+3] * scalex;
+			y1 = data[i+2];
+			x1 = data[i+3];
 		}
+
+		if(distort)  {
+			if(i & 2) {
+				x0 += 8;
+			} else {
+				x1 += 8;
+			}
+		}
+
+		y0 = y0 * scaley + yofs;
+		y1 = y1 * scaley + yofs;
+		x0 = x0 * scalex + xofs;
+		x1 = x1 * scalex + xofs;
 
 		if(y0 == y1) {
 			// Horizontal edge; just ignore it.
 			continue;
+		}
+
+		if(flip_horizontal) {
+			x0 = window_width - x0;
+			x1 = window_width - x1;
+		}
+		
+		if(flip_vertical) {
+			y0 = window_height - y0;
+			y1 = window_height - y1;
 		}
 
 		// ensure y0 <= y1
@@ -193,7 +287,7 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 
 		// Draw the lines.
 		int is_drawing = 0;
-		int prev_x = -1;
+		int prev_x = 0;
 		for(i = 0; i < next_active_list; i++) {
 			int next_x = is_drawing ? floorf(active_list[i]->xcurr) : ceilf(active_list[i]->xcurr);
 
@@ -201,8 +295,7 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 				&& (active_list[i]->ymax == y || active_list[i]->ymin == y);
 
 			if(is_drawing) {
-				// TODO: this sometimes results in lines where prev_x = next_x - 2. Figure out why.
-				planar_line_horizontal(bitplane, y + yofs, xofs + prev_x, xofs + next_x, xor);
+				planar_line_horizontal(bitplane, y, prev_x, next_x, xor, 0xffff);
 			}
 
 			if((!is_vertex) || (active_list[i]->ymax == y)) {
@@ -229,10 +322,12 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 	}
 }
 
-static inline void planar_line_horizontal_xor(int start_x, int end_x, uint32_t *data, uint32_t *end_data)
+static inline void planar_line_horizontal_xor(int start_x, int end_x, uint32_t *data, uint32_t *end_data, uint32_t pattern)
 {
-	uint32_t start = htobe32(0xffffffffUL >> (start_x % 32));
-	uint32_t end = htobe32(0xffffffffUL << (32 - (end_x % 32)));
+	int end_shift_amt = 32 - (end_x % 32);
+
+	uint32_t start = htobe32(pattern >> (start_x % 32));
+	uint32_t end = end_shift_amt == 32 ? 0 : htobe32(pattern << (32 - (end_x % 32)));
 
 	if(data == end_data) {
 		/* The entire line fits in a word. */
@@ -243,17 +338,18 @@ static inline void planar_line_horizontal_xor(int start_x, int end_x, uint32_t *
 
 		/* Second part: complete bytes */
 		while(data < end_data)
-			*data++ ^= 0xffffffffUL;
+			*data++ ^= pattern;
 
 		/* Third part: portion of a byte, drawing from MSB downwards. */
 		*data ^= end;
 	}
 }
 
-static inline void planar_line_horizontal_or(int start_x, int end_x, uint32_t *data, uint32_t *end_data)
+static inline void planar_line_horizontal_or(int start_x, int end_x, uint32_t *data, uint32_t *end_data, uint32_t pattern)
 {
-	uint32_t start = htobe32(0xffffffffUL >> (start_x % 32));
-	uint32_t end = htobe32(0xffffffffUL << (32 - (end_x % 32)));
+	int end_shift_amt = 32 - (end_x % 32);
+	uint32_t start = htobe32(pattern >> (start_x % 32));
+	uint32_t end = end_shift_amt == 32 ? 0 : htobe32(pattern << (32 - (end_x % 32)));
 
 	if(data == end_data) {
 		/* The entire line fits in a word. */
@@ -264,14 +360,14 @@ static inline void planar_line_horizontal_or(int start_x, int end_x, uint32_t *d
 
 		/* Second part: complete bytes */
 		while(data < end_data)
-			*data++ = 0xffffffffUL;
+			*data++ = pattern;
 
 		/* Third part: portion of a byte, drawing from MSB downwards. */
 		*data |= end;
 	}
 }
 
-void planar_line_horizontal(struct Bitplane *plane, int y, int start_x, int end_x, bool xor)
+void planar_line_horizontal(struct Bitplane *plane, int y, int start_x, int end_x, bool xor, uint16_t pattern)
 {
 	y = min(max(y, 0), plane->height - 1);
 	start_x = max(min(start_x, plane->width - 1), 0);
@@ -283,14 +379,25 @@ void planar_line_horizontal(struct Bitplane *plane, int y, int start_x, int end_
 	uint32_t *data = (uint32_t *)(plane->data + y * plane->stride) + (start_x / 32);
 	uint32_t *end_data = (uint32_t *)(plane->data + y * plane->stride) + (end_x / 32);
 
+	uint32_t pattern32 = (((uint32_t)pattern) << 16) | pattern;
+
 	if(xor) {
-		planar_line_horizontal_xor(start_x, end_x, data, end_data);
+		planar_line_horizontal_xor(start_x, end_x, data, end_data, pattern32);
 	} else {
-		planar_line_horizontal_or(start_x, end_x, data, end_data);
+		planar_line_horizontal_or(start_x, end_x, data, end_data, pattern32);
 	}
 }
 
-void planar_line_vertical(struct Bitplane *plane, int x, int start_y, int end_y, bool xor)
+static inline uint16_t rol16 (uint16_t n, unsigned int c)
+{
+	// https://stackoverflow.com/questions/776508/best-practices-for-circular-shift-rotate-operations-in-c
+	const unsigned int mask = (8 * sizeof(n) - 1);  // assumes width is a power of 2.
+
+	c &= mask;
+	return (n<<c) | (n>>( (-c)&mask ));
+}
+
+void planar_line_vertical(struct Bitplane *plane, int x, int start_y, int end_y, bool xor, uint16_t pattern)
 {
 	x = min(max(x, 0), plane->width - 1);
 	start_y = max(min(start_y, plane->height - 1), 0);
@@ -306,13 +413,19 @@ void planar_line_vertical(struct Bitplane *plane, int x, int start_y, int end_y,
 
 	if (xor) {
 		for(int length = end_y - start_y; length; length--) {
-			*data ^= pen;
+			if(pattern & 0x8000) 
+				*data ^= pen;
 			data += plane->stride;
+
+			pattern = rol16(pattern, 1);
 		}
 	} else {
 		for(int length = end_y - start_y; length; length--) {
-			*data |= pen;
+			if(pattern & 0x8000)
+				*data |= pen;
 			data += plane->stride;
+
+			pattern = rol16(pattern, 1);
 		}
 	}
 }
@@ -328,14 +441,14 @@ void planar_draw_thick_circle(struct Bitplane *bitplane, int xc, int yc, int rad
     int errinner = 1 - xinner;
 
 	while(xouter >= y) {
-		planar_line_horizontal(bitplane, yc + y, xc + xinner, xc + xouter, false);
-		planar_line_vertical(bitplane, xc + y,  yc + xinner, yc + xouter, false);
-		planar_line_horizontal(bitplane, yc + y, xc - xouter, xc - xinner, false);
-		planar_line_vertical(bitplane, xc - y,  yc + xinner, yc + xouter, false);
-		planar_line_horizontal(bitplane, yc - y, xc - xouter, xc - xinner, false);
-		planar_line_vertical(bitplane, xc - y,  yc - xouter, yc - xinner, false);
-		planar_line_horizontal(bitplane, yc - y, xc + xinner, xc + xouter, false);
-		planar_line_vertical(bitplane, xc + y,  yc - xouter, yc - xinner, false);
+		planar_line_horizontal(bitplane, yc + y, xc + xinner, xc + xouter, false, 0xffff);
+		planar_line_vertical(bitplane, xc + y,  yc + xinner, yc + xouter, false, 0xffff);
+		planar_line_horizontal(bitplane, yc + y, xc - xouter, xc - xinner, false, 0xffff);
+		planar_line_vertical(bitplane, xc - y,  yc + xinner, yc + xouter, false, 0xffff);
+		planar_line_horizontal(bitplane, yc - y, xc - xouter, xc - xinner, false, 0xffff);
+		planar_line_vertical(bitplane, xc - y,  yc - xouter, yc - xinner, false, 0xffff);
+		planar_line_horizontal(bitplane, yc - y, xc + xinner, xc + xouter, false, 0xffff);
+		planar_line_vertical(bitplane, xc + y,  yc - xouter, yc - xinner, false, 0xffff);
 
 		y++;
 
@@ -384,6 +497,26 @@ void planar_circle(struct Bitplane *plane, int x0, int y0, int radius)
 	}
 }
 
+void planar_filled_rect(struct Bitplane *plane, int sx, int sy, int ex, int ey)
+{
+	sy = min(max(sy, 0), plane->height - 1);
+	ey = min(max(ey, 0), plane->height - 1);
+	sx = max(min(sx, plane->width - 1), 0);
+	ex = min(max(ex, 0), plane->width - 1);
+
+	if(sx > ex || sy > ey)
+		return;
+
+	uint32_t pattern32 = 0xffffffff; // (((uint32_t)pattern) << 16) | pattern;
+
+	for(int y = sy; y <= ey; y++) {
+		uint32_t *data = (uint32_t *)(plane->data + y * plane->stride) + (sx / 32);
+		uint32_t *end_data = (uint32_t *)(plane->data + y * plane->stride) + (ex / 32);
+
+		planar_line_horizontal_or(sx, ex, data, end_data, pattern32);
+	}
+}
+
 void planar_clear(struct Bitplane *plane)
 {
 	if(plane->data_start) {
@@ -391,53 +524,133 @@ void planar_clear(struct Bitplane *plane)
 	}
 }
 
+static inline uint8_t update_masked_word(uint8_t orig, uint8_t value, int end_bit)
+{
+	uint8_t copied_mask = 0xff << (8 - (end_bit % 8));
+	value &= copied_mask;
+	uint8_t src_mask = 0xff >> (end_bit % 8);
+	value |= (orig & src_mask);
+	return value;
+}
+
+void graphics_bitplane_blit_line(uint8_t *fromdata, uint8_t *todata, int sx, int w, int dx)
+{
+	if(w <= 0)
+		return;
+
+	int src_offset = (sx / 8);
+	int dst_offset = (dx / 8);
+
+	uint8_t *src = fromdata + src_offset;
+	uint8_t *dst = todata   + dst_offset;
+	uint8_t *end_word = todata + ((dx + w) / 8);
+	int end_bit = dx + w;
+
+	if(((dx + w) % 8) == 0) {
+		/* We want end_word to point to the final usable word, not to the word after. */
+		end_word--;
+	}
+
+	uint8_t src_word = *src++;
+	uint8_t dst_word;
+
+	// Mask off the bits below dx in the initial word
+	if(!(dx % 8)) {
+		dst_word = 0;
+	} else {
+		dst_word = *dst & (0xff << (8 - (dx % 8)));
+	}
+
+	while(dx < end_bit) {
+		int src_avail = 8 - (sx % 8);
+		int dst_avail = 8 - (dx % 8);
+
+		uint8_t bits;
+
+		if(src_avail < 8) {
+			bits = src_word & ((1 << src_avail) - 1); // mask off bits above src_avail..
+		} else {
+			bits = src_word;
+		}
+
+		if(src_avail > dst_avail) {
+			// More src bits than dst bits: we will be right shifting to move to dst.
+
+			// sx = 2, dx = 5
+			// src_avail = 30, dst_avail = 27
+			// dst |= bits >> 3
+			dst_word |= bits >> ( (dx % 8) - (sx % 8) );
+
+			// we wrote dst_avail bits
+			sx += dst_avail;
+			dx += dst_avail;
+		} else {
+			// More dst bits than src bits; we will be left shifting to move to dst.
+			// sx = 5, dx = 2
+			// src_avail = 27, dst_avail = 30
+			// dst |= bits << 3;
+			dst_word |= bits << ( (sx % 8) - (dx % 8) );
+
+			// we wrote src_avail bits
+			sx += src_avail;
+			dx += src_avail;
+		}
+
+		if(!(sx % 8)) {
+			src_word = *src++;
+		}
+		if(!(dx % 8)) {
+			if(dx > end_bit) {
+				/* Reload the parts of the final word which we shouldn't have
+				 * touched.  NB end_bit % 8 will always be > 0 here -- only
+				 * time it can't be is if we had a width of 0, which is
+				 * special-cased at the start of the function. */
+				dst_word = update_masked_word(*dst, dst_word, end_bit);
+			}
+			*dst++ = dst_word;
+			dst_word = 0;
+		}
+	}
+	if(dst <= end_word) {
+		// dx advanced past length, but we didn't write the final word out.
+		*dst = update_masked_word(*dst, dst_word, end_bit);
+	}
+}
+
 void graphics_bitplane_blit(struct Bitplane *from, struct Bitplane *to, int sx, int sy, int w, int h, int dx, int dy)
 {
-	int src_stride = from->stride;
-	int dst_stride = to->stride;
-
-	int src_offset = (src_stride * sy) + (sx / 8);
-	int dst_offset = (dst_stride * dy) + (dx / 8);
+	int src_offset = from->stride * sy;
+	int dst_offset = to->stride * dy;
 
 	uint8_t *src = from->data + src_offset;
 	uint8_t *dst = to->data   + dst_offset;
 
-	int end_byte = (sx + w + 7) / 8;
-	int bytes_per_row = end_byte - (sx / 8) - 2; // Skip first and last bytes as they are special cased.
+	for( ; h; h--) {
+		graphics_bitplane_blit_line(src, dst, sx, w, dx);
 
-	uint8_t src_byte, dst_byte;
-
-	for(int y = 0; y < h; y++) {
-		/* Copy the first byte -- only keep the wanted bits */
-		src_byte = *src & (0xff >> (sx % 8));
-		/* In destination, retain only the unused bits. EG if dx % 8 == 2, we retain bits 7 and 6. */
-		dst_byte = *dst & (0xff << (8 - (dx % 8)));
-		*dst = dst_byte | src_byte;
-
-		/* Copy the middle bytes: */
-		memcpy(dst + 1, src + 1, bytes_per_row);
-
-		/* Last byte of src: retain the used bits, e.g. if end == 2, retain bits 7 and 6*/
-		src_byte = src[bytes_per_row + 2] & (0xff << (8 - ((sx + w) % 8)));
-		/* Last byte of dst: retain the unused bits, e.g. if end == 2, retain bits 5, 4, 3, 2, 1, 0 */
-		dst_byte = dst[bytes_per_row + 2] & (0xff >> ((dx + w) % 8));
-		dst[bytes_per_row + 2] = dst_byte | src_byte;
-
-		/* Next line: */
-		src += src_stride;
-		dst += dst_stride;
+		src += from->stride;
+		dst += to->stride;
 	}
-
 }
 
 void graphics_blit(struct Bitplane from[], struct Bitplane to[], int mask, int sx, int sy, int w, int h, int dx, int dy)
 {
 	/* copy all planes in 'mask' */
-	for(int plane_idx = 0; plane_idx < 5; plane_idx++) {
+	for(int plane_idx = 0; plane_idx < 6; plane_idx++) {
 		if((mask & (1 << plane_idx)) != 0) {
 			graphics_bitplane_blit(&from[plane_idx], &to[plane_idx], sx, sy, w, h, dx, dy);
 		}
 	}
 }
+
+/* Fast copy of an entire bitplane */
+void graphics_copy_plane(struct Bitplane *from, struct Bitplane *to)
+{
+	if(from->width == to->width && from->height == to->height) {
+		size_t amt = (from->width * from->height / 8);
+		memcpy(to->data_start, from->data_start, amt);
+	}
+}
+
 
 
