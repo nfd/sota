@@ -153,7 +153,10 @@ bool sound_sample_play(int sample_idx)
 		snd_file_idx = sample_idx;
 	}
 
-	Sample_Play(current_sample, 0, 0);
+	int8_t voice = Sample_Play(current_sample, 0, SFX_CRITICAL);
+	Voice_SetVolume(voice, 255);
+	Voice_SetPanning(voice, PAN_CENTER);
+
 	return true;
 }
 
