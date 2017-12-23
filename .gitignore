@@ -1,4 +1,5 @@
 shapes/script*.json
+shapes/script*.txt
 Spaceballs-StateOfTheArt.adf
 Spaceballs-StateOfTheArt.dms
 *.o
