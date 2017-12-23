@@ -1,7 +1,17 @@
 OBJS=main.o graphics.o anim.o scene.o wad.o choreography.o sound.o iff.o iff-font.o posix_sdl2_backend.o heap.o mbit.o pcgrandom.o tinf/src/adler32.o tinf/src/crc32.o tinf/src/tinflate.o tinf/src/tinfzlib.o
 
-LIBS=-lSDL2 -lm -lmikmod -lpthread
-CFLAGS=-g -O2 -std=c99 -Wall -Werror -fsanitize=address -Wno-unused-function -DHEAP_SIZE_KB=512
+# Set your local Mikmod path here if you have one.  I use a local mikmod due
+# to a bug the official release has with playing samples on OS X (and also
+# because it's nice not to chase a moving target, though mikmod isn't really
+# moving much nowadays)
+MIKMOD_LIBS = -L. -lmikmod.3.3.0
+MIKMOD_CFLAGS = -Ilibmikmod-3.3.11.1/include
+
+LIBS=-lSDL2 -lm $(MIKMOD_LIBS) -lpthread
+CFLAGS=-g -O0 -std=c99 -Wall -Werror -fsanitize=address -Wno-unused-function -DHEAP_SIZE_KB=512 $(MIKMOD_CFLAGS)
+
+# -fsanitize=address maps 16GB, which confuses the hell out of Valgrind. So if you're Valgrinding, don't use fsanitize=address.
+#CFLAGS=-g -O0 -std=c99 -Wall -Werror -Wno-unused-function -DHEAP_SIZE_KB=512 $(MIKMOD_CFLAGS)
 #CFLAGS=-g -O0 -std=c99 -Wall -Werror -Wno-unused-function -DHEAP_SIZE_KB=512
 
 # POSIX backend
