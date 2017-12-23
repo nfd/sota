@@ -28,7 +28,7 @@ SDL_Window *window;
 SDL_Renderer *renderer;
 SDL_Texture *texture; // which we will update every frame.
 int window_width, window_height;
-void(*blitter_func)(int x, int y, uint32_t *palette);
+void(*copper_func)(int x, int y, uint32_t *palette);
 
 uint8_t *wad; // the entire wad
 
@@ -39,20 +39,20 @@ uint8_t *wad; // the entire wad
  * which run at 25 fps */
 #define MS_PER_FRAME 20
 
-/* Current palette */
-uint32_t palette[32];
+/* Current palette -- we pretranslate EHB mode */
+uint32_t palette[64];
 
 uint32_t *framebuffer;
 
 // The bitplanes
 uint8_t *bitplane_pool_start, *bitplane_pool_next, *bitplane_pool_end;
-struct Bitplane backend_bitplane[5];
+struct Bitplane backend_bitplane[6];
 
 // Set to -1 if no font loaded. If >= 0 a font
 // is loaded and the bitplanes are valid.
 int loaded_font_idx; 
 // Bespoke artisanal bitplanes just for the font.
-struct Bitplane font_bitplane[5];
+struct Bitplane font_bitplane[6];
 
 uint64_t backend_get_time_ms()
 {
@@ -80,8 +80,9 @@ bool backend_should_display_next_frame(int64_t time_remaining_this_frame)
 		SDL_Event event;
 		if(SDL_WaitEventTimeout(&event, time_remaining_this_frame) != 0) {
 			switch(event.type) {
-				case SDL_KEYUP:
-					return false;
+				case SDL_KEYDOWN:
+					if(event.key.keysym.scancode == SDL_SCANCODE_ESCAPE)
+						return false;
 					break;
 			}
 		}
@@ -171,18 +172,19 @@ void backend_render()
 	uint8_t *plane_idx_2 = (uint8_t *)backend_bitplane[2].data;
 	uint8_t *plane_idx_3 = (uint8_t *)backend_bitplane[3].data;
 	uint8_t *plane_idx_4 = (uint8_t *)backend_bitplane[4].data;
+	uint8_t *plane_idx_5 = (uint8_t *)backend_bitplane[5].data;
 
 	int fb_idx = 0;
-	int blitter_check_step = window_width / 40;
+	int copper_check_step = window_width / 40;
 
 	for(int y = 0; y < window_height; y++) {
 		int bitx = 0, x = 0;
-		int next_blitter_check_location = 0;
+		int next_copper_check_location = 0;
 
 		while(x < window_width) {
-			if(blitter_func && x >= next_blitter_check_location) {
-				blitter_func(x * 40 / window_width, y * 256 / window_height, palette);
-				next_blitter_check_location += blitter_check_step;
+			if(copper_func && x >= next_copper_check_location) {
+				copper_func(x * 40 / window_width, y * 256 / window_height, palette);
+				next_copper_check_location += copper_check_step;
 			}
 
 			uint8_t plane0 = plane_idx_0[bitx]; // we always have at least 2 bitplanes (TODO?)
@@ -190,6 +192,7 @@ void backend_render()
 			uint8_t plane2 = plane_idx_2 ? plane_idx_2[bitx] : 0;
 			uint8_t plane3 = plane_idx_3 ? plane_idx_3[bitx] : 0;
 			uint8_t plane4 = plane_idx_4 ? plane_idx_4[bitx] : 0;
+			uint8_t plane5 = plane_idx_5 ? plane_idx_5[bitx] : 0;
 
 			unsigned bit;
 			for(bit = 0x80; bit; bit >>= 1) {
@@ -198,7 +201,8 @@ void backend_render()
 					| ((plane1 & bit) ? 2 : 0)
 					| ((plane2 & bit) ? 4 : 0)
 					| ((plane3 & bit) ? 8 : 0)
-					| ((plane4 & bit) ? 16 : 0)];
+					| ((plane4 & bit) ? 16 : 0)
+					| ((plane5 & bit) ? 32 : 0)];
 
 				x++;
 			}
@@ -211,6 +215,7 @@ void backend_render()
 		plane_idx_2 += backend_bitplane[2].stride;
 		plane_idx_3 += backend_bitplane[3].stride;
 		plane_idx_4 += backend_bitplane[4].stride;
+		plane_idx_5 += backend_bitplane[5].stride;
 
 		fb_idx += window_width;
 	}
@@ -220,9 +225,9 @@ void backend_render()
 	SDL_RenderPresent(renderer);
 }
 
-void backend_register_blitter_func(void(*func)(int x, int y, uint32_t *palette))
+void backend_register_copper_func(void(*func)(int x, int y, uint32_t *palette))
 {
-	blitter_func = func;
+	copper_func = func;
 }
 
 static uint8_t *read_entire_wad(const char *filename) {
@@ -278,7 +283,7 @@ bool backend_init(int width, int height, bool fullscreen, const void *wad_name)
 	}
 
 	/* Graphics initialisation */
-	blitter_func = NULL;
+	copper_func = NULL;
 
 	if(SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO) != 0) {
 		fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -324,14 +329,15 @@ bool backend_init(int width, int height, bool fullscreen, const void *wad_name)
 	SDL_RenderClear(renderer);
 	SDL_RenderPresent(renderer);
 
-	// reserve memory for a pool of bitplane allocations equal to 5 windows' worth of data.
-	bitplane_pool_start = bitplane_pool_next = malloc(window_width * window_height * 5);
+	// reserve memory for a pool of bitplane allocations equal to 10 windows' worth of data
+	size_t bitmap_amt = (window_width / 8) * window_height * 10;
+	bitplane_pool_start = bitplane_pool_next = malloc(bitmap_amt);
 	if(bitplane_pool_start == NULL) {
 		fprintf(stderr, "couldn't allocate bitplane memory\n");
 		return false;
 	}
 
-	bitplane_pool_end = bitplane_pool_start + (window_width * window_height * 5);
+	bitplane_pool_end = bitplane_pool_start + bitmap_amt;
 
 	// Initially all bitplanes point to a single screen-wide display inside the pool.
 	backend_allocate_standard_bitplanes();
@@ -356,6 +362,7 @@ struct Bitplane *backend_allocate_bitplane(int idx, int width, int height)
 		abort();
 	}
 
+	backend_bitplane[idx].idx = idx;
 	backend_bitplane[idx].width = width;
 	backend_bitplane[idx].height = height;
 	backend_bitplane[idx].stride = stride;
@@ -366,13 +373,13 @@ struct Bitplane *backend_allocate_bitplane(int idx, int width, int height)
 void backend_allocate_standard_bitplanes() {
 	backend_set_new_scene();
 
-	for(int i = 0; i < 5; i++) {
+	for(int i = 0; i < 6; i++) {
 		backend_allocate_bitplane(i, window_width, window_height);
 	}
 }
 
 void backend_set_new_scene() {
-	for(int i = 0; i < 5; i++) {
+	for(int i = 0; i < 6; i++) {
 		backend_bitplane[i].data_start = backend_bitplane[i].data = NULL;
 		backend_bitplane[i].width = backend_bitplane[i].height = backend_bitplane[i].stride = 0;
 	}
@@ -419,10 +426,23 @@ void backend_set_palette(int num_elements, uint32_t *elements) {
 	for(int i = num_elements; i < 32; i++) {
 		palette[i] = 0xff000000;
 	}
+
+	for(int i = 0; i < 32; i++) {
+		uint32_t double_bright = palette[i];
+		palette[i + 32] = 0xff000000
+			| (((double_bright & 0x00ff0000) >> 17) << 16)
+			| (((double_bright & 0x0000ff00) >> 9) << 8)
+			| (((double_bright & 0x000000ff) >> 1));
+	}
 }
 
 void backend_set_palette_element(int idx, uint32_t element) {
 	palette[idx] = element;
+}
+
+uint32_t backend_get_palette_element(int idx)
+{
+	return palette[idx];
 }
 
 /* Fonts, using the iff-font code.
@@ -430,18 +450,16 @@ void backend_set_palette_element(int idx, uint32_t element) {
  * Kind of annoying -- creates a separate font bitmap
  * and blits from it.
 */
-#define FONT_PLANES_WIDTH 320
-#define FONT_PLANES_HEIGHT 256
 bool backend_font_load(int file_idx, uint32_t startchar, uint32_t numchars, uint16_t *positions)
 {
 	if(loaded_font_idx >= 0) {
 		backend_font_unload();
 	}
 
-	for(int i = 0; i < 5; i++) {
-		font_bitplane[i].width = FONT_PLANES_WIDTH;
-		font_bitplane[i].height = FONT_PLANES_HEIGHT;
-		font_bitplane[i].stride = FONT_PLANES_WIDTH / 8;
+	for(int i = 0; i < 6; i++) {
+		font_bitplane[i].width = backend_bitplane[0].width;
+		font_bitplane[i].height = backend_bitplane[0].height;
+		font_bitplane[i].stride = backend_bitplane[0].width / 8;
 		font_bitplane[i].data_start
 			= font_bitplane[i].data
 			= malloc(font_bitplane[i].height * font_bitplane[i].stride);
@@ -463,7 +481,7 @@ bool backend_font_load(int file_idx, uint32_t startchar, uint32_t numchars, uint
 
 void backend_font_unload()
 {
-	for(int i = 0; i < 5; i++) {
+	for(int i = 0; i < 6; i++) {
 		if(font_bitplane[i].data_start) {
 			free(font_bitplane[i].data);
 			font_bitplane[i].data = font_bitplane[i].data_start = NULL;
@@ -518,15 +536,27 @@ void backend_wad_unload_file(void *data)
 	/* wad is permanently loaded */
 }
 
-void backend_run(int ms)
+static uint32_t scene_name_to_scene_ms(char *scene_name)
 {
+	uint8_t *choreography = wad + wad_get_choreography_offset(wad);
+
+	return choreography_find_ms_for_scene_name(choreography, scene_name);
+}
+
+void backend_run(int ms, char *scene_name)
+{
+	if(scene_name) {
+		ms = scene_name_to_scene_ms(scene_name);
+	}
+
 	uint64_t starttime = backend_get_time_ms();
 
 	/* If 'ms' is initially >0, backdate startime */
 	starttime -= ms;
 
 	uint8_t *choreography = backend_wad_load_choreography_for_scene_ms(ms);
-	choreography_prepare_to_run(choreography, ms);
+	if(!choreography_prepare_to_run(choreography, ms))
+		return;
 
 	bool keepgoing = true;
 	while(keepgoing) {

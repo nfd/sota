@@ -10,7 +10,7 @@
 #include <stdint.h>
 
 struct Bitplane {
-	int width, height, stride;
+	int idx, width, height, stride;
 	uint8_t *data; // potentially offset
 	uint8_t *data_start; // unoffsetted data
 };
@@ -31,7 +31,7 @@ extern int window_width, window_height;
  *
  * Thus bitplane_width, bitplane_height and bitplane_stride exist.
 */
-extern struct Bitplane backend_bitplane[5]; // the bitplanes
+extern struct Bitplane backend_bitplane[6]; // the bitplanes
 
 void backend_set_new_scene();
 struct Bitplane *backend_allocate_bitplane(int idx, int width, int height);
@@ -55,7 +55,7 @@ bool backend_should_display_next_frame(int64_t time_remaining_this_frame);
 
 /* Present the current frame and prepare to render the next. */
 void backend_render();
-void backend_register_blitter_func(void(*func)(int x, int y, uint32_t *palette));
+void backend_register_copper_func(void(*func)(int x, int y, uint32_t *palette));
 
 /* Memory allocations are performed in the "init" portion of the module. They
  * are freed by the backend at shutdown and can't be freed by other modules.
@@ -67,6 +67,7 @@ void *backend_reserve_memory(size_t size);
 void backend_set_palette(int num_elements, uint32_t *elements);
 void backend_get_palette(int num_elements, uint32_t *elements);
 void backend_set_palette_element(int idx, uint32_t element);
+uint32_t backend_get_palette_element(int idx);
 
 /* Font drawing. This is backend-specific since some backends can't
  * load a whole-screen bitmapped font. */
@@ -91,7 +92,7 @@ int backend_random();
 void backend_debug(const char *fmt, ...);
 
 /* Run the entire thing */
-void backend_run(int ms);
+void backend_run(int ms, char *scene_name);
 
 #endif // BACKEND_H
 

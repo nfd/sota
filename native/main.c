@@ -20,14 +20,16 @@
 #define OPT_FULLSCREEN 1
 #define OPT_HELP 2
 #define OPT_MS 3
-#define OPT_NOSOUND 4
-#define OPT_WIDTH 5
-#define OPT_HEIGHT 6
-#define OPT_WAD 7
+#define OPT_SCENE 4
+#define OPT_NOSOUND 5
+#define OPT_WIDTH 6
+#define OPT_HEIGHT 7
+#define OPT_WAD 8
 
 struct option options[] = {
 	{"fullscreen", no_argument, NULL, OPT_FULLSCREEN},
 	{"ms", required_argument, NULL, OPT_MS},
+	{"scene", required_argument, NULL, OPT_SCENE},
 	{"help", no_argument, NULL, OPT_HELP},
 	{"nosound", no_argument, NULL, OPT_NOSOUND},
 	{"width", required_argument, NULL, OPT_WIDTH},
@@ -41,6 +43,7 @@ static void help() {
 	printf("A demo by Spaceballs, revived by WzDD\n");
 	printf("Options:\n\n");
 	printf("  --ms <x>         : start at millisecond x rather than the beginning\n");
+	printf("  --scene <scene>  : start at scene <scene>\n");
 	printf("  --nosound        : don't make any noise\n");
 	printf("  --fullscreen     : run in fullscreen rather than a 640x480 window\n");
 	printf("  --width <x>      : set display width\n");
@@ -53,6 +56,7 @@ int main(int argc, char **argv) {
 	bool nosound = false;
 	int start_ms = 0;
 	char *wad_filename = 0;
+	char *start_scene_name = NULL;
 
 	int width = DEFAULT_WIDTH;
 	int height = DEFAULT_HEIGHT;
@@ -75,6 +79,9 @@ int main(int argc, char **argv) {
 				return 1;
 			case OPT_MS:
 				start_ms = atoi(optarg);
+				break;
+			case OPT_SCENE:
+				start_scene_name = optarg;
 				break;
 			case OPT_NOSOUND:
 				nosound = true;
@@ -128,7 +135,7 @@ int main(int argc, char **argv) {
 	anim_init();
 	scene_init();
 
-	backend_run(start_ms);
+	backend_run(start_ms, start_scene_name);
 
 #if 0
 	background_init_concentric_circles();
