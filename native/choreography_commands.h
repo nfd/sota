@@ -14,4 +14,5 @@
 #define CMD_SCENE 13
 #define CMD_SCENE_INDEX 14
 #define CMD_MBIT 15
+#define CMD_SCENE_OPTIONS 16
 

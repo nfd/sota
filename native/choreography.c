@@ -608,11 +608,6 @@ static void run(int ms) {
 		}
 	}
 
-	// Backgrounds.
-	if(state.effect_tick) {
-		state.effect_tick(ms);
-	}
-
 	// palette fades
 	if(state.fade_count != 0) {
 		if(ms > state.fade_end_ms) {
@@ -622,6 +617,11 @@ static void run(int ms) {
 		} else {
 			graphics_lerp_palette(state.fade_count, state.fade_from, state.fade_to, ms - state.fade_start_ms, state.fade_end_ms - state.fade_start_ms);
 		}
+	}
+
+	// Backgrounds.
+	if(state.effect_tick) {
+		state.effect_tick(ms);
 	}
 	
 	// epilepsy mode (the final dancing scene)
