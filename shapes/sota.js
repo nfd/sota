@@ -19,21 +19,24 @@ var bpwidth = new Array();
 var bpheight = new Array();
 var bpoffset = new Array(); // start index for bitplane (to allow for scrolling)
 
+var flip_vertical = false;
+var flip_horizontal = false;
+
 /*
 var palette = new Array(0xff000000, 0xff000000, 0xff007711, 0xff0000dd, 0xff770077, 0xff0077dd, 0xff111177, 0xff00bbbb,
 		0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000);
 		*/
 
 // debug palette
-var palette = new Array(0xff000000, 0xffffffff, 0xff007711, 0xff0000dd, 0xff770077, 0xff0077dd, 0xff111177, 0xff00bbbb,
-		0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000, 0xff000000);
-
+var palette = new Array(0xff000000, 0xffaaaaaa, 0xffff0000, 0xff00ff00, 0xff0000ff, 0xffffff00, 0xffff00ff, 0xff00ffff,
+		0xff777777, 0xffffffff, 0xff770000, 0xff007700, 0xff000077, 0xff777700, 0xff770077, 0xff007777);
 
 function setup() {
 	canvas = document.getElementById("sotacanvas");
 	idxElem = document.getElementById("idx");
 	
 	document.getElementById("step").addEventListener('click', step);
+	document.getElementById("step_back").addEventListener('click', step_back);
 	document.getElementById("animate").addEventListener('click', start_animating);
 	document.getElementById("dump").addEventListener('click', dump);
 
@@ -80,8 +83,29 @@ function setup() {
 	//loadScript("script067080.json");
 	//loadScript("script07789e.json");
 	//loadScript("script075c66.json");
-	loadScript("script0aface.json");
-	//loadScript("script078104.json");
+
+	// flying / jumpying
+	//loadScript("script09d9c4.json");
+	// loadScript("script09e1b8.json"); /* somersault in */
+	//loadScript("script09f31a.json"); /* backflip with fish-lik entrance */
+	//loadScript("script0a12f2.json"); /* fly in from right */
+	//loadScript("script0a0552.json"); /* backflip */
+	
+	// iris/dancer
+	//loadScript("script0b3274.json");
+	//loadScript("script0aface.json");
+	
+	// 3d
+	loadScript("script0b989c.json");
+
+	var choice = document.getElementById("scriptchoice");
+	choice.addEventListener("change", function() {
+		idxElem.value = "0";
+		var filename = choice.options[choice.selectedIndex].value;
+		loadScript(filename);
+		document.getElementById('title').innerHTML = filename;
+	});
+
 }
 
 function log(text) {
@@ -219,6 +243,16 @@ function draw_polyfill(bitplane_idx, data, base_idx, length) {
 			continue;
 		}
 
+		if(flip_vertical) {
+			y0 = 200 - y0;
+			y1 = 200 - y1;
+		}
+
+		if(flip_horizontal) {
+			x0 = 256 - x0;
+			x1 = 256 - x1;
+		}
+
 		// ensure y0 <= y1
 		if(y0 > y1) {
 			var tmp;
@@ -323,9 +357,7 @@ function draw_polyfill(bitplane_idx, data, base_idx, length) {
 	}
 }
 
-function draw(bitplane_idx, data, idx, clearPlane) {
-
-	var length = data[idx++];
+function draw(bitplane_idx, data, idx, length, clearPlane) {
 
 	if(clearPlane) {
 		clear_bitplane(bitplane_idx);
@@ -339,11 +371,7 @@ function draw(bitplane_idx, data, idx, clearPlane) {
 		*/
 
 		draw_polyfill(bitplane_idx, data, idx, length);
-
-		idx += (length * 2);
 	}
-
-	return idx;
 }
 function combine_bitplanes(ctx)
 {
@@ -387,12 +415,13 @@ function draw_multiple(ctx, idx)
 	for(var i = 0; i < num_draws; i++) {
 		var cmd = data[idx++];
 
-		log("draw cmd " + cmd.toString(16) + " idx " + (idx - 2) + " len " + data[idx]);
+		log("draw cmd " + cmd.toString(16) + " idx " + (idx - 2) + " len " + data[idx] + " num " + i);
 		if(cmd >= 0xd0 && cmd <= 0xdf) {
 			// we know what these are.
 			var bitplane_idx = 0;
-
-			idx = draw(bitplane_idx, data, idx, drawn_in_plane[bitplane_idx]==0);
+			var length = data[idx++];
+			draw(bitplane_idx, data, idx, length, drawn_in_plane[bitplane_idx]==0);
+			idx += (length * 2);
 			drawn_in_plane[bitplane_idx] = 1;
 		} else if (cmd == 0xe6 || cmd == 0xe7 || cmd == 0xe8 || cmd == 0xf2) {
 			var bitplane_idx = 0; //cmd == 0xe6? 0: 2;
@@ -407,7 +436,7 @@ function draw_multiple(ctx, idx)
 			//log("Tween " + tween_from + " " + tween_to + " " + tween_t + " " + tween_count);
 
 			var shape = lerp_tween(tween_from, tween_to, tween_t, tween_count);
-			draw(bitplane_idx, shape, 0, drawn_in_plane[bitplane_idx]==0);
+			draw(bitplane_idx, shape, 1, shape[0], drawn_in_plane[bitplane_idx]==0);
 			drawn_in_plane[bitplane_idx] = 1;
 		} else {
 			console.log("unexpected draw cmd " + cmd);
@@ -516,6 +545,14 @@ function start_animating() {
 	last_animation_frame = -1;
 	animation_start_ms = Date.now();
 	step();
+}
+
+function step_back() {
+	var idx = idxElem.value;
+	if(idxElem.value > 0) {
+		idxElem.value -= 2;
+		step();
+	}
 }
 
 function dump() {
