@@ -14,6 +14,7 @@
 #include "pcgrandom.h"
 
 #define VOTEVOTEVOTE_DISPLAY_MS 60
+//#define VOTEVOTEVOTE_DISPLAY_MS 5000
 
 #define COPPER_PASTELS_SWITCH_SPEED_MS 1600
 #define COPPER_PASTELS_WIDTH 16
@@ -26,7 +27,8 @@ struct pastel {
 };
 
 struct copperpastels_effect_data_struct {
-	uint32_t num_pastels;
+	int16_t palette_fade_ref;
+	uint16_t num_pastels;
 	struct pastel pastels[]; // * num_pastels
 };
 
@@ -47,9 +49,7 @@ static int copperpastels_ms_start;
 static struct copperpastels_effect_data_struct *g_copperpastels_effect_data;
 
 // Static effects
-#define STATIC_EFFECT_CIRCLES_AND_BLITTER_COPY 1
 static int static_ticks_count;
-static int static_effect_num;
 static pcg32_random_t static_rngstate;
 
 struct {
@@ -328,19 +328,19 @@ static uint32_t copperpastels_interpolate(uint32_t from, uint32_t to, float amt)
 		| interpolate_one((from & 0xff), (to & 0xff), amt);
 }
 
-static uint32_t copperpastels_code_to_colour(uint8_t code)
+static uint32_t copperpastels_code_to_colour(uint8_t code, uint8_t multiplier)
 {
 	switch(code) {
 		case 'W':
-			return 0xffffffff;
+			return 0xff000000 | (multiplier << 16) | (multiplier << 8) | multiplier;
 		case 'R':
-			return 0xffff0000;
+			return 0xff000000 | (multiplier << 16);
 		case 'G':
-			return 0xff00ff00;
+			return 0xff000000 | (multiplier << 8);
 		case 'B':
-			return 0xff0000ff;
+			return 0xff000000 | multiplier;
 		case 'Y':
-			return 0xffffff00;
+			return 0xff000000 | (multiplier << 16) | (multiplier << 8);
 		case 'X':
 			return 0xff000000;
 		default:
@@ -348,11 +348,11 @@ static uint32_t copperpastels_code_to_colour(uint8_t code)
 	}
 }
 
-static uint32_t copperpastels_interpolate_corner(uint8_t first, uint8_t second, float amt)
+static uint32_t copperpastels_interpolate_corner(uint8_t first, uint8_t second, float amt, uint8_t multiplier)
 {
 	return copperpastels_interpolate(
-			copperpastels_code_to_colour(first),
-			copperpastels_code_to_colour(second),
+			copperpastels_code_to_colour(first, multiplier),
+			copperpastels_code_to_colour(second, multiplier),
 			amt);
 }
 
@@ -367,13 +367,21 @@ static void copperpastels_set_corners(int ms) {
 	if(second_index == g_copperpastels_effect_data->num_pastels)
 		second_index = 0;
 
+	uint8_t multiplier;
+	if(g_copperpastels_effect_data->palette_fade_ref != -1) {
+		multiplier = (0xff0000 & backend_get_palette_element(g_copperpastels_effect_data->palette_fade_ref)) >> 16;
+	} else {
+		multiplier = 0xff;
+	}
+
+
 	struct pastel *first = &g_copperpastels_effect_data->pastels[first_index];
 	struct pastel *second = &g_copperpastels_effect_data->pastels[second_index];
 
-	copperpastels_set(0, 0, copperpastels_interpolate_corner(first->tl, second->tl, amt));
-	copperpastels_set(COPPER_PASTELS_WIDTH - 1, 0, copperpastels_interpolate_corner(first->tr, second->tr, amt));
-	copperpastels_set(COPPER_PASTELS_WIDTH - 1, COPPER_PASTELS_HEIGHT - 1, copperpastels_interpolate_corner(first->br, second->br, amt));
-	copperpastels_set(0, COPPER_PASTELS_HEIGHT - 1, copperpastels_interpolate_corner(first->bl, second->bl, amt));
+	copperpastels_set(0, 0, copperpastels_interpolate_corner(first->tl, second->tl, amt, multiplier));
+	copperpastels_set(COPPER_PASTELS_WIDTH - 1, 0, copperpastels_interpolate_corner(first->tr, second->tr, amt, multiplier));
+	copperpastels_set(COPPER_PASTELS_WIDTH - 1, COPPER_PASTELS_HEIGHT - 1, copperpastels_interpolate_corner(first->br, second->br, amt, multiplier));
+	copperpastels_set(0, COPPER_PASTELS_HEIGHT - 1, copperpastels_interpolate_corner(first->bl, second->bl, amt, multiplier));
 }
 
 /* Copper effects: x is between 0 and 40 (every 8 pixels on a 320-width display), y is between 0 and 256. */
@@ -383,6 +391,17 @@ static void scene_copperpastels_do_copper_effect(int x, int y, uint32_t *palette
 	y = y * COPPER_PASTELS_HEIGHT / 256;
 	x = x * COPPER_PASTELS_WIDTH / 40;
 	palette[0] = copperpastels_get(x, y);
+
+	/* The crazy-hips dancer scene (but not the 'hat' dancers scene) has
+	 * the same copper pastels effect twice, once on BP0 and once on BP1. The
+	 * effect is a cool 'shadow' revealing the second copper program.
+	 *
+	 * The 'hat' dancers doesn't use bitplane 1, so doing this in both scenes
+	 * is fine.
+	 *
+	 * No idea if this ("flip it") is right.
+	 */
+	palette[2] = copperpastels_get(COPPER_PASTELS_WIDTH - x, COPPER_PASTELS_HEIGHT - y);
 }
 
 void scene_init_copperpastels(int ms, void *v_data)
@@ -393,9 +412,10 @@ void scene_init_copperpastels(int ms, void *v_data)
 			+ (sizeof(struct pastel) * effect_data_in->num_pastels));
 
 	g_copperpastels_effect_data->num_pastels = effect_data_in->num_pastels;
+	g_copperpastels_effect_data->palette_fade_ref = effect_data_in->palette_fade_ref;
 	memcpy(g_copperpastels_effect_data->pastels, effect_data_in->pastels, sizeof(struct pastel) * effect_data_in->num_pastels);
 
-	backend_register_blitter_func(scene_copperpastels_do_copper_effect);
+	backend_register_copper_func(scene_copperpastels_do_copper_effect);
 	copperpastels_ms_start = ms;
 }
 
@@ -427,12 +447,11 @@ void scene_copperpastels_tick(int ms)
 						(float)y / COPPER_PASTELS_HEIGHT));
 		}
 	}
-	delayedblit_do_copy(3, 0);
 }
 
 void scene_deinit_copperpastels()
 {
-	backend_register_blitter_func(NULL);
+	backend_register_copper_func(NULL);
 }
 
 /* TODO: fitting this into memory constraints -- we can do font at 4 bitplanes, buuut... 
@@ -442,9 +461,6 @@ void scene_init_static(int ms, void *data)
 {
 	static_ticks_count = 0;
 	static_rngstate.state = 0x57a7e0fa27ULL;
-
-	int *effect_num = (int *)data;
-	static_effect_num = *effect_num;
 }
 
 /* In terms of global_scale which is based on a 256x256 display.
@@ -457,57 +473,57 @@ static const int16_t static_circles_radii[] = {
 
 static const int static_num_frames = 4; // fair dice roll
 
+void _draw_static_to_plane(struct Bitplane *plane)
+{
+	uint32_t random;
+	random = pcg32_random_r(&static_rngstate);
+	int bytes_avail = 4;
+
+	uint8_t *ptr = plane->data;
+
+	for(int y = 0; y < plane->height; y++) {
+		for(int x = 0; x < plane->width / 8; x++) {
+			ptr[x] = random & 0xff;
+			bytes_avail --;
+			if(!bytes_avail) {
+				random = pcg32_random_r(&static_rngstate);
+				bytes_avail = 4;
+			} else {
+				random >>= 8;
+			}
+		}
+
+		ptr += plane->stride;
+	}
+
+}
+
 #define STATIC_BITPLANE_NUM 0
 
 void scene_static_tick(int ms)
 {
-	uint32_t random;
-	int bytes_avail;
-
 	if(static_ticks_count % STATIC_SWITCH_SPEED_TICKS == 0) {
 		int frame = (static_ticks_count / STATIC_SWITCH_SPEED_TICKS) % static_num_frames;
 
 		static_rngstate.inc = 37 + frame;
-		random = pcg32_random_r(&static_rngstate);
-		bytes_avail = 4;
 
-		uint8_t *ptr = backend_bitplane[STATIC_BITPLANE_NUM].data;
+		_draw_static_to_plane(&backend_bitplane[STATIC_BITPLANE_NUM]);
 
 		int radii_idx = frame * 2;
 
-		for(int y = 0; y < backend_bitplane[STATIC_BITPLANE_NUM].height; y++) {
-			for(int x = 0; x < backend_bitplane[STATIC_BITPLANE_NUM].width / 8; x++) {
-				ptr[x] = random & 0xff;
-				bytes_avail --;
-				if(!bytes_avail) {
-					random = pcg32_random_r(&static_rngstate);
-					bytes_avail = 4;
-				} else {
-					random >>= 8;
-				}
-			}
+		// Several circles clustered around the midpoint.
+		//planar_draw_thick_circle(&backend_bitplane[0], window_width / 2, window_height / 2, 25, 2);
+		struct Bitplane *plane = &backend_bitplane[STATIC_BITPLANE_NUM];
 
-			ptr += backend_bitplane[STATIC_BITPLANE_NUM].stride;
+		for(int max_idx = radii_idx + 2; radii_idx < max_idx; radii_idx ++) {
+			int radius = static_circles_radii[radii_idx] * global_scale;
+			planar_circle(plane, window_width / 2, window_height / 2, radius);
+			planar_circle(plane, 4 * global_scale + window_width / 2, window_height / 2, radius);
+			planar_circle(plane, window_width / 2, 4 * global_scale + window_height / 2, radius);
+			planar_circle(plane, 2 * global_scale + window_width / 2, 2 * global_scale + window_height / 2, radius);
 		}
 
-		switch(static_effect_num) {
-			case STATIC_EFFECT_CIRCLES_AND_BLITTER_COPY: {
-				// Several circles clustered around the midpoint.
-				//planar_draw_thick_circle(&backend_bitplane[0], window_width / 2, window_height / 2, 25, 2);
-				struct Bitplane *plane = &backend_bitplane[STATIC_BITPLANE_NUM];
-
-				for(int max_idx = radii_idx + 2; radii_idx < max_idx; radii_idx ++) {
-					int radius = static_circles_radii[radii_idx] * global_scale;
-					planar_circle(plane, window_width / 2, window_height / 2, radius);
-					planar_circle(plane, 4 * global_scale + window_width / 2, window_height / 2, radius);
-					planar_circle(plane, window_width / 2, 4 * global_scale + window_height / 2, radius);
-					planar_circle(plane, 2 * global_scale + window_width / 2, 2 * global_scale + window_height / 2, radius);
-				}
-
-				delayedblit_do_copy(3, 1);
-				break;
-			}
-		}
+		delayedblit_do_copy(3, 1);
 	}
 	static_ticks_count += 1;
 }
@@ -515,4 +531,90 @@ void scene_static_tick(int ms)
 void scene_deinit_static()
 {
 }
+
+#define STATIC2_BITPLANE_NUM 5
+
+static void _scene_init_static2_draw_squares_quarter_rect(struct Bitplane *plane, int xoffset, int yoffset, int width, int height)
+{
+	for(int i = 0; i < (500 * global_scale); i++) {
+		int sx = xoffset + pcg32_random_r(&static_rngstate) % width;
+		int sy = yoffset + pcg32_random_r(&static_rngstate) % height;
+		int ex = sx + pcg32_random_r(&static_rngstate) % 40;
+		int ey = sy + pcg32_random_r(&static_rngstate) % 30;
+
+		uint16_t pattern;
+
+		if ((pcg32_random_r(&static_rngstate) & 0x7) == 7)
+			pattern = 0xaaaa;
+		else
+			pattern = 0xffff;
+
+		for(int thick = 0; thick < 2; thick++) {
+			planar_line_horizontal(plane, sy + thick, sx, ex, true, pattern);
+			planar_line_horizontal(plane, ey + thick, sx, ex, true, pattern);
+			planar_line_vertical(plane, sx + thick, sy, ey, true, pattern);
+			planar_line_vertical(plane, ex + thick, sy, ey, true, pattern);
+		}
+	}
+}
+
+void scene_init_static2(int ms, void *effect_data)
+{
+	/* We re-use the static struct */
+	static_ticks_count = 0;
+	static_rngstate.state = 0x57a7e0fa27ULL;
+
+	//struct Bitplane *plane = &backend_bitplane[STATIC2_BITPLANE_NUM];
+
+	/*
+	int half_width = plane->width / 2;
+	int half_height = plane->height / 2;
+	*/
+
+	// planar_filled_rect(plane, 0, 0, plane->width, plane->height);
+
+	//_draw_static_to_plane(plane);
+
+	/*
+	_scene_init_static2_draw_squares_quarter_rect(plane, 0, 0, half_width, half_height);
+	_scene_init_static2_draw_squares_quarter_rect(plane, half_width, 0, half_width, half_height);
+	_scene_init_static2_draw_squares_quarter_rect(plane, 0, half_height, half_width, half_height);
+	_scene_init_static2_draw_squares_quarter_rect(plane, half_width, half_height, half_width, half_height);
+	*/
+
+	static_ticks_count = 0;
+}
+
+void scene_static2_tick(int ms)
+{
+	/* 0 1 *
+	 * 2 3 */ 
+	int half_width_bytes = backend_bitplane[STATIC2_BITPLANE_NUM].stride / 2;
+	int half_height_bytes = (backend_bitplane[STATIC2_BITPLANE_NUM].height / 2) * backend_bitplane[STATIC2_BITPLANE_NUM].stride;
+
+	switch((static_ticks_count % 16) >> 2) {
+		case 0:
+			backend_bitplane[STATIC2_BITPLANE_NUM].data = backend_bitplane[STATIC2_BITPLANE_NUM].data_start;
+			break;
+		case 1:
+			backend_bitplane[STATIC2_BITPLANE_NUM].data = backend_bitplane[STATIC2_BITPLANE_NUM].data_start
+				+ half_width_bytes;
+			break;
+		case 2:
+			backend_bitplane[STATIC2_BITPLANE_NUM].data = backend_bitplane[STATIC2_BITPLANE_NUM].data_start
+				+ half_height_bytes;
+			break;
+		case 3:
+			backend_bitplane[STATIC2_BITPLANE_NUM].data = backend_bitplane[STATIC2_BITPLANE_NUM].data_start
+				+ half_height_bytes + half_width_bytes;
+			break;
+	}
+
+	static_ticks_count ++;
+}
+
+void scene_deinit_static2()
+{
+}
+
 

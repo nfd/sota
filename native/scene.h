@@ -21,3 +21,7 @@ void scene_init_static(int ms, void *effect_data);
 void scene_static_tick(int ms);
 void scene_deinit_static();
 
+void scene_init_static2(int ms, void *effect_data);
+void scene_static2_tick(int ms);
+void scene_deinit_static2();
+
