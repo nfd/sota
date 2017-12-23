@@ -6,13 +6,12 @@ import urllib.request
 import gzip
 
 import libsotadisk
+import iffilbm
 
 OUTPUT_DIR_JSON='../shapes'
+OUTPUT_DIR_INFO='../shapes'
 OUTPUT_DIR_BINARY='data'
-
-"""
-Data format. View it as a finite-state machine, I guess.
-"""
+OUTPUT_DIR_ILBM='data'
 
 # Magic image-finding regex: 0. +d. +.. +cc
 
@@ -64,24 +63,24 @@ animations = (
 	0x9ae1a,
 
 	# jumping 
-	0x9d9c4,
+	0x9d9c4,  # 34 (facing right, ends horizontal middle)
 
-	0x9e1b8,
+	0x9e1b8,  # 53 (somersault middle bottom to top to bottom)
 
-	0x9f31a,
+	0x9f31a,  # 52 (kind of an unside down flip from bottom to top)
 
-	0xa0552,
+	0xa0552,  # 33 (backflip, ends up almost in crawling position)
 
-	0xa12f2,
+	0xa12f2,  # splay out, 'fly'
 
 	# "angley" distorted dancer (but not distorted?) (TODO where is this?)
 
 	# Opening iris to square to female dancer, profile, to five-pointed shape, to same dancer in profile, turning towards
 	# camera, to circle, to front-facing dancer, to collection of triangles at bottom of screen, to front-facing dancer,
 	# to square filling the screen
-	0xaface,
+	0xaface, # 232
 
-	# dancer, unknown (suspiciously similar to the first one)
+	# dancer, unknown (suspiciously similar to the first one) -- probably distorted-zoomed dancer?
 	0xb3274,
 
 	# The grid thing.
@@ -121,6 +120,13 @@ animations = (
 	0xd82fa,
 )
 
+images = (
+	('static1', 0xa2400, 352, 283, 1), # that's right, 352 by *283*.
+	('static2', 0xa55d8, 352, 283, 1),
+	('static3', 0xa87b0, 352, 283, 1),
+	('static4', 0xab988, 352, 283, 1),
+)
+
 path = '../Spaceballs-StateOfTheArt.adf'
 
 def write_binary(script, path_prefix):
@@ -132,10 +138,15 @@ def write_binary(script, path_prefix):
 
 		h.write(bytes(script['data']))
 
+def write_info(script, pathname):
+	with open(pathname, 'w') as h:
+		h.write('length: %d' % (len(script['indices'])))
+
 def write_animation(image):
 	filename_json = 'script%06x.json' % (image)
 	pathname_json = os.path.join(OUTPUT_DIR_JSON, filename_json)
 	pathname_bin  = os.path.join(OUTPUT_DIR_BINARY, '%06x' % (image))
+	pathname_info = os.path.join(OUTPUT_DIR_INFO, 'script%06x.txt' % (image))
 
 	with open(path, 'rb') as h:
 		h.seek(image)
@@ -145,6 +156,7 @@ def write_animation(image):
 			json.dump(script, h, sort_keys=True)
 
 		write_binary(script, pathname_bin)
+		write_info(script, pathname_info)
 		
 		print("Wrote", pathname_json)
 	
@@ -158,6 +170,23 @@ def write_all_animations():
 
 	with open(os.path.join(OUTPUT_DIR_JSON, 'scripts.json'), 'w') as h:
 		json.dump(filenames, h)
+
+def write_all_images():
+	with open(path, 'rb') as h:
+		for filename, offset, width, height, num_planes in images:
+			bytes_per_plane = width * height // 8
+
+			h.seek(offset)
+			planes = [h.read(bytes_per_plane) for plane_num in range(num_planes)]
+
+			ilbm = iffilbm.to_iff(planes, width, height)
+
+			pathname = os.path.join(OUTPUT_DIR_ILBM, filename) + '.iff'
+			with open(pathname, 'wb') as out:
+				out.write(ilbm)
+
+			print('wrote %s' % (pathname,))
+				
 
 URL = "http://lardcave.net/sota/Spaceballs-StateOfTheArt.adf.gz"
 MAX_LENGTH = 880 * 1024
@@ -179,4 +208,5 @@ def retrieve_disk_image():
 
 retrieve_disk_image()
 write_all_animations()
+write_all_images()
 
