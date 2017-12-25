@@ -1,6 +1,7 @@
 #define _DEFAULT_SOURCE
 
 #include <stdio.h>
+#include <assert.h>
 #include <math.h>
 #include <inttypes.h>
 #include <stdbool.h>
@@ -14,10 +15,10 @@
 
 /* Data related to the polygon fill algorithm. Must be initialised because it depends on the height. */
 struct poly_elem {
-	float xcurr;
-	int16_t ymax;
-	float grad_recip;
 	struct poly_elem *prev;
+	float xcurr;
+	float grad_recip;
+	int16_t ymax;
 	// original vertex info
 	int16_t ymin;
 	int16_t xmin;
@@ -28,6 +29,7 @@ int outline_width;
 
 int graphics_init() {
 	// edge_table is used by the scanline polygon rendering algorithm
+
 	edge_table = heap_alloc(window_height * sizeof(struct poly_elem *));
 	if(edge_table == NULL) {
 		backend_debug("edge_table: couldn't alloc");
@@ -258,6 +260,7 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 			global_ymax = y1;
 
 		struct poly_elem *elem = &(line_info[next_line_info++]);
+
 		elem->xcurr = x0;
 		elem->ymax = y1;
 		elem->grad_recip = ((float)(x1 - x0)) / ((float)(y1 - y0));
@@ -267,6 +270,8 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 
 		edge_table[y0] = elem;
 	}
+
+	assert(next_line_info < MAX_LINES);
 
 	// Active edge table: subset of the edge table which is currently being drawn.
 	next_active_list = 0; // reset the active list
@@ -279,6 +284,7 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 		active = edge_table[y];
 		while(active) {
 			add_active(active);
+			assert(active != active->prev);
 			active = active->prev;
 		}
 
@@ -313,7 +319,6 @@ void graphics_draw_filled_scaled_polygon_to_bitmap(int num_vertices, uint8_t *da
 				i++;
 			}
 		}
-
 
 		// Update the gradients in AET.
 		for(i = 0; i < next_active_list; i++) {

@@ -3,6 +3,9 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <stdlib.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #include "graphics.h"
 #include "anim.h"
@@ -170,8 +173,12 @@ int main(int argc, char **argv) {
 	anim_destroy(anim);
 #endif
 
+#ifdef __EMSCRIPTEN__
+	emscripten_exit_with_live_runtime();
+#else
 	graphics_shutdown();
 	sound_deinit();
 	backend_shutdown();
+#endif
 }
 

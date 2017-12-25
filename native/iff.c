@@ -15,48 +15,43 @@
 #include "minmax.h"
 #include "align.h"
 
-#define IFF_FORM 0x464f524d  /* "FORM" */
-#define IFF_ILBM 0x494c424d  /* "ILBM" */
-#define IFF_BMHD 0x424d4844  /* "BMHD" */
-#define IFF_CMAP 0x434d4150  /* "CMAP" */
-#define IFF_BODY 0x424f4459  /* "BODY" */
-
-
 struct BitmapHeader currentHeader;
 
-static uint8_t *iff_find_chunk(uint8_t *data, uint8_t *end, uint32_t chunk_name, uint32_t *size_out)
+static inline bool _is_chunk(const uint8_t *data, const char *chunk_name)
 {
-	uint32_t *data32 = (uint32_t *)data;
-	chunk_name = htobe32(chunk_name);
+	return memcmp(data, chunk_name, 4) == 0;
+}
 
-	if(be32toh(*data32) != IFF_FORM) {
+static uint8_t *iff_find_chunk(uint8_t *data, uint8_t *end, char *chunk_name, uint32_t *size_out)
+{
+	if(!_is_chunk(data, "FORM")) {
 		fprintf(stderr, "iff_find_chunk: FORM\n");
 		return NULL;
 	}
 
-	data32 += 2;
+	data += 2 * 4;
 
-	if(be32toh(*data32) != IFF_ILBM) {
+	if(!_is_chunk(data, "ILBM")) {
 		fprintf(stderr, "iff_find_chunk: ILBM\n");
 		return NULL;
 	}
 
-	data32 ++;
+	data += 4;
 
-	while(data32 < (uint32_t *)end) {
-		if(*data32 == chunk_name) {
+	while(data < end) {
+		if(_is_chunk(data, chunk_name)) {
 			if(size_out)
-				*size_out = be32toh(data32[1]);
+				*size_out = be32toh(*((uint32_t *)(data + 4)));
 
-			data32 += 2; // skip chunk name and size
-			return (uint8_t *)data32;
+			data += (2 * 4); // skip chunk name and size
+			return data;
 		} else {
-			uint32_t chunk_size = be32toh(data32[1]);
+			uint32_t chunk_size = be32toh(*((uint32_t *)(data + 4)));
 
 			if(chunk_size % 2 == 1)
 				chunk_size ++; // alignment
 
-			data32 = (uint32_t *) (((uint8_t *)data32) + chunk_size + 8);
+			data += (chunk_size + 8);
 		}
 	}
 
@@ -209,7 +204,7 @@ bool iff_load(int file_idx, struct LoadedIff *iff)
 
 	uint8_t *end = data + size;
 
-	iff->bmhd = (struct BitmapHeader *)iff_find_chunk(data, end, IFF_BMHD, NULL);
+	iff->bmhd = (struct BitmapHeader *)iff_find_chunk(data, end, "BMHD", NULL);
 	if(iff->bmhd == NULL) {
 		fprintf(stderr, "iff_load: bmhd\n");
 		backend_wad_unload_file(data);
@@ -222,14 +217,14 @@ bool iff_load(int file_idx, struct LoadedIff *iff)
 		return false;
 	}
 
-	iff->body = (int8_t *)iff_find_chunk(data, end, IFF_BODY, NULL);
+	iff->body = (int8_t *)iff_find_chunk(data, end, "BODY", NULL);
 	if(iff->body == NULL) {
 		fprintf(stderr, "iff_load: body\n");
 		backend_wad_unload_file(data);
 		return false;
 	}
 
-	iff->cmap = iff_find_chunk(data, end, IFF_CMAP, &iff->cmap_count);
+	iff->cmap = iff_find_chunk(data, end, "CMAP", &iff->cmap_count);
 	if(iff->cmap) {
 		iff->cmap_count /= 3;
 	} else {

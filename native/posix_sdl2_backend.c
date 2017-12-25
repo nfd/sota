@@ -15,6 +15,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdarg.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #include "endian_compat.h"
 #include "backend.h"
@@ -23,6 +26,7 @@
 #include "wad.h"
 #include "choreography.h"
 #include "choreography_commands.h"
+#include "sound.h"
 
 SDL_Window *window;
 SDL_Renderer *renderer;
@@ -273,6 +277,10 @@ static uint8_t *read_entire_wad(const char *filename) {
 }
 
 
+void _dummy_main_loop()
+{
+}
+
 bool backend_init(int width, int height, bool fullscreen, const void *wad_name)
 {
 	/* Read WAD */
@@ -281,6 +289,13 @@ bool backend_init(int width, int height, bool fullscreen, const void *wad_name)
 		fprintf(stderr, "Couldn't read wad\n");
 		return false;
 	}
+
+#ifdef __EMSCRIPTEN__
+	/* Dummy main loop early so we can call SDL functions (timers I think)
+	 * which trigger emscripten_set_main_loop_timing. */
+	emscripten_set_main_loop(_dummy_main_loop, 0, 0);
+#endif
+
 
 	/* Graphics initialisation */
 	copper_func = NULL;
@@ -543,13 +558,31 @@ static uint32_t scene_name_to_scene_ms(char *scene_name)
 	return choreography_find_ms_for_scene_name(choreography, scene_name);
 }
 
+static uint64_t starttime;
+static int64_t time_remaining_this_frame;
+
+void _backend_run_one()
+{
+	int ms;
+
+	uint64_t frametime = backend_get_time_ms();
+	ms = frametime - starttime;
+
+	choreography_do_frame(ms);
+
+	time_remaining_this_frame = (MS_PER_FRAME * GLOBAL_SLOWDOWN) - (backend_get_time_ms() - frametime);
+
+	backend_render();
+	sound_update();
+}
+
 void backend_run(int ms, char *scene_name)
 {
 	if(scene_name) {
 		ms = scene_name_to_scene_ms(scene_name);
 	}
 
-	uint64_t starttime = backend_get_time_ms();
+	starttime = backend_get_time_ms();
 
 	/* If 'ms' is initially >0, backdate startime */
 	starttime -= ms;
@@ -558,21 +591,19 @@ void backend_run(int ms, char *scene_name)
 	if(!choreography_prepare_to_run(choreography, ms))
 		return;
 
+#ifdef __EMSCRIPTEN__
+	emscripten_cancel_main_loop();
+	emscripten_set_main_loop(_backend_run_one, 0, 0);
+
+#else
 	bool keepgoing = true;
 	while(keepgoing) {
-		uint64_t frametime = backend_get_time_ms();
-		ms = frametime - starttime;
-
-		choreography_do_frame(ms);
-
-		int64_t time_remaining_this_frame = (MS_PER_FRAME * GLOBAL_SLOWDOWN) - (backend_get_time_ms() - frametime);
-
-		backend_render();
-
+		_backend_run_one();
 		keepgoing = backend_should_display_next_frame(time_remaining_this_frame);
 	}
 
 	backend_wad_unload_file(choreography);
+#endif
 }
 
 void backend_debug(const char *fmt, ...)
@@ -580,7 +611,7 @@ void backend_debug(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
+	vfprintf(stdout, fmt, ap);
 	va_end(ap);
 	putc('\n', stdout);
 

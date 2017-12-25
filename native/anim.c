@@ -213,10 +213,11 @@ uint8_t *lerp_tween(uint8_t *tween_from, uint8_t *tween_to, int tween_t, int twe
 	int tween_from_length = *tween_from++;
 	int tween_to_length   = *tween_to++;
 
-	uint8_t *pos = current_tween;
+	uint8_t *lerp_pos = current_tween;
 
+	/* TODO this and the multiplier thing are pretty obviously broken */
 	int points = tween_from_length > tween_to_length ? tween_from_length: tween_to_length;
-	*(pos++)= points;
+	*(lerp_pos++)= points;
 
 	float point_multiplier_from = (float)tween_from_length / points;
 	float point_multiplier_to   = (float)tween_to_length / points;
@@ -232,8 +233,8 @@ uint8_t *lerp_tween(uint8_t *tween_from, uint8_t *tween_to, int tween_t, int twe
 		uint8_t to_y = tween_to[point_to * 2];
 		uint8_t to_x = tween_to[(point_to * 2) + 1];
 
-		*pos++ = from_y + (amt * (to_y - from_y));
-		*pos++ = from_x + (amt * (to_x - from_x));
+		*lerp_pos++ = from_y + (amt * (to_y - from_y));
+		*lerp_pos++ = from_x + (amt * (to_x - from_x));
 	}
 
 	return current_tween;

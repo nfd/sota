@@ -3,6 +3,7 @@
 */
 #include <inttypes.h>
 #include <stdbool.h>
+#include <assert.h>
 
 #include "heap.h"
 
@@ -12,7 +13,7 @@
 #define HEAP_SIZE (HEAP_SIZE_KB * 1024)
 #define MAX_ALLOC 16
 
-static uint8_t heap[HEAP_SIZE];
+static uint8_t heap[HEAP_SIZE] __attribute__((aligned(sizeof(uintptr_t))));
 static void *heap_allocs[MAX_ALLOC];
 static int next_alloc_ptr; // index into heap_allocs
 
@@ -31,6 +32,8 @@ void *heap_alloc(size_t size)
 
 	size = align(size, sizeof(uintptr_t));
 	void *start = heap_allocs[next_alloc_ptr];
+
+	assert(((uintptr_t)start) % sizeof(uintptr_t) == 0);
 
 	next_alloc_ptr ++;
 	heap_allocs[next_alloc_ptr] = start + size;

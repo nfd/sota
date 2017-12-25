@@ -1,9 +1,9 @@
 #define _DEFAULT_SOURCE
+#define _BSD_SOURCE
 
 #include <stdbool.h>
 #include <mikmod.h>
 #include <stdio.h>
-#include <pthread.h>
 #include <unistd.h>
 
 #include "wad.h"
@@ -22,8 +22,6 @@ int mod_file_idx;
 
 static SAMPLE *current_sample;
 int snd_file_idx;
-
-static pthread_t audio_thread;
 
 FILE *file_open(int idx)
 {
@@ -64,14 +62,10 @@ static SAMPLE *wz_load_sample(int idx)
 	return sample;
 }
 
-static void *audio_thread_entry(void *arg)
+void sound_update(void)
 {
-	while(true) {
+	if(!nosound)
 		MikMod_Update();
-		usleep(10000);
-	}
-
-	return NULL;
 }
 
 bool sound_init(bool arg_nosound)
@@ -102,13 +96,6 @@ bool sound_init(bool arg_nosound)
 		MikMod_SetNumVoices(-1, 1);
 
 		MikMod_EnableOutput();
-
-		if(pthread_create(&audio_thread, NULL, audio_thread_entry, NULL) != 0) {
-			fprintf(stderr, "sound_init: pthread_create\n");
-			return false;
-		}
-
-		pthread_detach(audio_thread);
 	}
 
 	return true;
@@ -164,8 +151,6 @@ bool sound_deinit()
 {
 	if(!nosound) {
 		sound_mod_stop();
-
-		pthread_cancel(audio_thread);
 
 		if(current_sample)
 			Sample_Free(current_sample);

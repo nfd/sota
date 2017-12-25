@@ -1,0 +1,9 @@
+Building for Emscripten
+
+mikmod:
+	emconfigure ./configure --enable-static --enable-sdl --enable-sdl2 --disable-sdltest  --disable-osx
+	emmake make
+
+sota:
+	emmake make
+
