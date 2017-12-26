@@ -1,0 +1,32 @@
+Building for Emscripten
+
+I tried two different audio options (see pain section, below) but settled on mikmod. To do the same, ignore "modplug" and "sdl2-mixer" below.
+
+Note that mikmod needs a couple of patches applied.
+
+mikmod:
+	emconfigure ./configure --enable-static --enable-sdl --enable-sdl2 --disable-sdltest  --disable-osx
+	emmake make
+
+modplug (tested with 0.8.9.0), unused for now in favour of mikmod:
+	emconfigure ./configure --enable-static --disable-shared --prefix=/Users/wzdd/Projects/sota/native/libmodplug-0.8.9.0/installed
+	emmake make
+
+sdl2-mixer (tested with 2.0.1), unused for now in favour of mikmod:
+	hg checkout 730
+	emconfigure ./configure --enable-music-mod-modplug --disable-music-mod-modplug-shared --disable-music-midi --disable-music-ogg --disable-music-flac --disable-music-mp3 --enable-music-wave --disable-sdltest --disable-music-cmd CFLAGS="-I /Users/wzdd/Projects/sota/native/libmodplug-0.8.9.0/installed/include" LDFLAGS="-L/Users/wzdd/Projects/sota/native/libmodplug-0.8.9.0/installed/lib" --prefix=/Users/wzdd/Projects/sota/native/SDL_mixer/installed
+	emmake make
+	
+
+sota:
+	emmake make
+
+Pain with audio:
+	- mikmod can be made to build but doesn't sound good (wrong frequency? See below)
+	- sdl_mixer is built in to emscripten and just passes sound to the browser for handling -- which obviously don't work for mods
+	- sdl2_mixer latest can't be built for emscripten because it requires sdl 2.0.7 and emscripten has sdl 2.0.5 (at time of writing).
+	- older versions of sdl2_mixer don't support the 32-bit mixing used by web audio, but there's a patch.
+	- libmodplug messes up the mod! It skips a bit of intro to the 3D section.
+	- Finally settled on applying the 32-bit sdl2_mixer patch set to mikmod.
+
+

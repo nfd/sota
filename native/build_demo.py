@@ -7,6 +7,7 @@ import os
 import gzip
 import json
 import math
+import argparse
 
 from wad import Wad
 
@@ -664,7 +665,13 @@ DEMO = [
 		('pause', {'ms': 5 * MS_PER_ANIM_FRAME}),
 
 		('scene_options', {'flip_vertical': True, 'multidraw_3d': True}),
+
+		# libmodplug decodes the MOD incorrectly at this point, missing the
+		# introduction to the 3d scene, which is about 1 second of audio.
+
 		('split_anim', {'name': '0b989c', 'from': 0, 'to': 135}),
+		#('split_anim', {'name': '0b989c', 'from': 50, 'to': 135}),
+
 		# Fade to white 
 		('fadeto', {'ms': MS_PER_ANIM_FRAME * 9, 'values': (0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff)}),
 		('split_anim', {'name': '0b989c', 'from': 136, 'to': 144}), 
@@ -873,7 +880,6 @@ DEMO = [
 		('pause', {'ms': 1000}),
 
 		('end', {}),
-
 ]
 
 CMD_END = 0
@@ -1427,5 +1433,9 @@ def build_demo(choreography, filename):
 	print("wrote %s (central directory size: %d)" % (filename, central_directory_size))
 
 if __name__ == '__main__':
+	parser = argparse.ArgumentParser()
+	parser.add_argument('--modplug-bad-decoder', default=False, action='store_true', help="Work around libmodplug's buggy MOD player")
+	args = parser.parse_args()
+
 	build_demo(DEMO, 'sota.wad')
 
