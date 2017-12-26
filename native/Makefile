@@ -1,12 +1,5 @@
 OBJS=main.o graphics.o anim.o scene.o wad.o choreography.o iff.o iff-font.o posix_sdl2_backend.o heap.o mbit.o pcgrandom.o tinf/src/adler32.o tinf/src/crc32.o tinf/src/tinflate.o tinf/src/tinfzlib.o sound.o
 
-# Set your local Mikmod path here if you have one.  I use a local mikmod due
-# to a bug the official release has with playing samples on OS X (and also
-# because it's nice not to chase a moving target, though mikmod isn't really
-# moving much nowadays)
-MIKMOD_LIBS = -L. -lmikmod.3.3.0
-MIKMOD_CFLAGS = -Ilibmikmod-3.3.11.1/include
-
 ifdef EMSCRIPTEN
 	# -g4 -O0 for debugging.
 	CFLAGS=-g -O2 -std=c99 -Wall -Werror -Wno-unused -DHEAP_SIZE_KB=1024 $(MIKMOD_CFLAGS) -s USE_SDL=2
@@ -17,9 +10,9 @@ ifdef EMSCRIPTEN
 	# Debugging
 	#CFLAGS:=$(CFLAGS) -s 'SAFE_HEAP=1' -s 'ASSERTIONS=1'
 
-	# Overriding above mikmod libs
-	#LIBS:=-lm -lpthread libmikmod-3.3.11.1/.libs/libmikmod.a
-	LIBS:=-lm libmikmod-3.3.11.1/.libs/libmikmod.a
+	# Emscripten doesn't seem to do realtime clocks well so fall back to gettimeofday
+	CFLAGS+=-ISDL_mixer/installed/include -DNO_POSIX_REALTIME_CLOCKS
+	LIBS:=SDL_mixer/installed/lib/libSDL2_mixer.a libmodplug-0.8.9.0/installed/lib/libmodplug.a -lm
 	LDFLAGS=--embed-file sota.wad
 	UNAME:=emscripten
 	MAIN_TARGET:=sota.html
@@ -27,7 +20,7 @@ else
 	CFLAGS=-g -O0 -std=c99 -Wall -Werror -fsanitize=address -Wno-unused-function -DHEAP_SIZE_KB=512 $(MIKMOD_CFLAGS)
 	# Lame OS detection
 	UNAME:=$(shell uname)
-	LIBS=-lSDL2 -lm $(MIKMOD_LIBS) 
+	LIBS=-lSDL2 -lSDL2_mixer -lm
 	MAIN_TARGET:=sota
 endif
 
