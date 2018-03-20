@@ -21,8 +21,8 @@
 #include "choreography.h"
 #include "choreography_commands.h"
 
-#define MOD_START 1
-#define MOD_STOP 2
+#define SOUND_START 1
+#define SOUND_STOP 2
 
 #define EFFECT_NOTHING 0
 #define EFFECT_SPOTLIGHTS 1
@@ -308,11 +308,24 @@ static void cmd_pause(struct choreography_pause *pause) {
 static void cmd_mod(struct choreography_mod *mod) {
 #ifdef BACKEND_SUPPORTS_SOUND
 	switch(mod->subcmd) {
-		case MOD_START:
+		case SOUND_START:
 			sound_mod_play(mod->arg);
 			break;
-		case MOD_STOP:
+		case SOUND_STOP:
 			sound_mod_stop();
+			break;
+	}
+#endif
+}
+
+static void cmd_mp3(struct choreography_mod *mod) {
+#ifdef BACKEND_SUPPORTS_SOUND
+	switch(mod->subcmd) {
+		case SOUND_START:
+			sound_mp3_play(mod->arg);
+			break;
+		case SOUND_STOP:
+			sound_mp3_stop();
 			break;
 	}
 #endif
@@ -496,6 +509,9 @@ static void create_state_item(int ms, struct choreography_header *pos)
 			break;
 		case CMD_MOD:
 			cmd_mod((struct choreography_mod *)pos);
+			break;
+		case CMD_MP3:
+			cmd_mp3((struct choreography_mod *)pos);
 			break;
 		case CMD_ILBM:
 			cmd_ilbm((struct choreography_ilbm *)pos);

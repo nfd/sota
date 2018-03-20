@@ -239,6 +239,7 @@ static uint8_t *read_entire_wad(const char *filename) {
 	
 	int h = open(filename, O_RDONLY);
 	if(h < 0) {
+		backend_debug("Attempting to read entire wad failed for filename %s\n", filename);
 		perror(filename);
 		return NULL;
 	}

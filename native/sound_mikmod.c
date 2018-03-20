@@ -125,6 +125,17 @@ bool sound_mod_stop()
 	return true;
 }
 
+bool sound_mp3_play(int new_mp3_idx)
+{
+	//  Unsupported under mikmod
+	return true;
+}
+
+bool sound_mp3_stop()
+{
+	return true;
+}
+
 bool sound_sample_play(int sample_idx)
 {
 	if(nosound)

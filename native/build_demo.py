@@ -15,6 +15,9 @@ MS_PER_ANIM_FRAME = 40
 
 ENDIAN = '<'
 
+# MP3 (False) or mod (True)? (set by environment variable; see main)
+USE_MODS = True
+
 FONTMAP = [
 	0,   208, 48,  255, # a
 	48,  208, 48,  255, # b
@@ -73,7 +76,7 @@ DEMO = [
 		('fadeto', {'ms': 2000, 'values': (0xff110022, 0xff221144, 0xff110022, 0xff110033)}),
 		('split_anim', {'name': '010800', 'from': 0, 'to': 50}),
 		#('pause', {'ms': 500}),
-		('mod', {'type': 'start', 'name': 'data/stateldr.mod'}),
+		('music', {'type': 'start', 'mod': 'data/stateldr.mod', 'mp3': 'data/stateldr.mp3'}),
 		# Girl with gun displayed inside hand
 		('split_anim', {'name': '002c00', 'from': 0, 'to': 141, 'plane': 1, 'xor': 1}),
 		('clear', {'plane': 1}),
@@ -81,7 +84,7 @@ DEMO = [
 		# xor is manually disabled -- this is probably also encoded in draw cmds but whatever.
 		('split_anim', {'name': '010800', 'from': 52, 'to': 145, 'xor': 0}),
 		('split_anim', {'name': '010800', 'from': 146, 'to': 334, 'xor': 1}),
-		('mod', {'type': 'stop'}),
+		('music', {'type': 'stop'}),
 
 		# frame 1649
 		# Title: STATE OF THE ART, credits, dragon pic
@@ -131,7 +134,7 @@ DEMO = [
 		('scene', {'name': 'dance-1', 'planes': (BITPLANE_1X1, BITPLANE_2X2, BITPLANE_OFF, BITPLANE_OFF, BITPLANE_OFF)}),
 		('clear', {'plane': 'all'}),
 		('starteffect', {'name': 'spotlights'}),
-		('mod', {'type': 'start', 'name': 'data/condom corruption.mod'}),
+		('music', {'type': 'start', 'mod': 'data/condom corruption.mod', 'mp3': 'data/condom_corruption.mp3'}),
 		('palette', {'values': (0xff000000, 0xff000000, 0xff117700, 0xff000000, 0xff770077, 0xff000000, 0xff771111)}),
 		('fadeto', {'ms': 1000, 'values': (0xff000000, 0xff000000, 0xff117700, 0xffdd0000, 0xff770077, 0xffdd7700, 0xff771111,
 			0xffbbbb00)}),
@@ -899,6 +902,7 @@ CMD_SCENE = 13
 CMD_SCENE_INDEX = 14
 CMD_MBIT = 15
 CMD_SCENE_OPTIONS = 16
+CMD_MP3 = 17
 
 NET_USE_OK = False
 MAX_FILE_LENGTH = 1024 * 1024
@@ -1059,12 +1063,19 @@ def encode_end(args, state):
 def encode_pause(args, state):
 	return args['ms'], struct.pack(ENDIAN + 'I', CMD_PAUSE)
 
-def encode_mod(args, state):
+def encode_music(args, state):
 	if args['type'] == 'start':
-		get_file(args['name'])
-		packme = (CMD_MOD, 1, state['wad'].add(args['name']))
+		if USE_MODS:
+			get_file(args['mod'])
+			packme = (CMD_MOD, 1, state['wad'].add(args['mod']))
+		else:
+			get_file(args['mp3'])
+			packme = (CMD_MP3, 1, state['wad'].add(args['mp3']))
 	elif args['type'] == 'stop':
-		packme = (CMD_MOD, 2, 0)
+		if USE_MODS:
+			packme = (CMD_MOD, 2, 0)
+		else:
+			packme = (CMD_MP3, 2, 0)
 
 	return 0, struct.pack(ENDIAN + 'III', *packme)
 
@@ -1435,7 +1446,10 @@ def build_demo(choreography, filename):
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--modplug-bad-decoder', default=False, action='store_true', help="Work around libmodplug's buggy MOD player")
+	parser.add_argument('--mp3', default=False, action='store_true', help='Use MP3s instead of MODs')
 	args = parser.parse_args()
+
+	USE_MODS = not args.mp3
 
 	build_demo(DEMO, 'sota.wad')
 
