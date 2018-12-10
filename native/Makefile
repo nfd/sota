@@ -75,3 +75,10 @@ clean:
 publish: sota.js
 	scp sota.js sota.js.mem index.html wzdd@lardcave.net:/home/wzdd/www/lardcave/www/sota/
 
+.PHONY: fromscratch
+fromscratch:
+	mkdir data
+	python3 fromadf.py
+	python3 split_and_compress.py
+	python3 build_demo.py
+
