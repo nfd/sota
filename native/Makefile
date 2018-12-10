@@ -39,7 +39,8 @@ ifdef EMSCRIPTEN
 	# Use MP3s (sadly) rather than mods to workaround poorly supported web audio APIs
 	BUILD_DEMO_ARGS:=--mp3
 else
-	MIKMOD_LIBS = -L. -lmikmod.3.3.0
+	OBJS:=$(OBJS) sound_mikmod.o
+	MIKMOD_LIBS = -L. -lmikmod
 	CFLAGS=-g -O0 -std=c99 -Wall -Werror -fsanitize=address -Wno-unused-function -DHEAP_SIZE_KB=512 $(MIKMOD_CFLAGS)
 	# Lame OS detection
 	UNAME:=$(shell uname)

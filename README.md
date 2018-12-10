@@ -2,7 +2,7 @@
 
 This is a reimplementation, in C, of the classic Amiga demo State Of The Art, by Spaceballs: http://www.pouet.net/prod.php?which=99
 
-**Work in progress:** Only the first minute or so of the demo is complete. Contributions appreciated!
+**Work in progress:** It is a complete reimplementation, but the timing is off in parts.
 
 The code is new, but it uses the demo's original graphics, animation, and sounds.
 
