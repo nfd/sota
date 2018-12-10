@@ -881,6 +881,7 @@ DEMO = [
 
 		('ilbm', {'name': 'data/phew.iff', 'display': 'fullscreen'}),
 		('pause', {'ms': 1000}),
+		('music', {'type': 'stop'}),
 
 		('end', {}),
 ]
